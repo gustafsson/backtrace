@@ -9,7 +9,18 @@ To make bugs go squish you want some sort of indication as to where it is. This 
 
 ````cpp
 string backtrace = Backtrace::make_string ();
+cout << backtrace;
 ````
+
+Example output (compiled with clang-500.2.79):
+
+    backtrace (5 frames)
+    Backtrace::make_string(int) (in backtrace-unittest) (backtrace.cpp:264)
+    Backtrace::test() (in backtrace-unittest) (backtrace.cpp:283)
+    BacktraceTest::UnitTest::test() (in backtrace-unittest) (unittest.cpp:34)
+    start (in libdyld.dylib) + 1
+    0x0000000000000001
+
 
 #### PrettifySegfault example ####
 _The PrettifySegfault class should attempt to capture any null-pointer exception (SIGSEGV and SIGILL) in the program, log a backtrace, and then throw a regular C++ exception from the function causing the signal._
