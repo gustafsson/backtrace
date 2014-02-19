@@ -1,8 +1,12 @@
 #include "detectgdb.h"
 
+#ifndef _MSC_VER
 #include <sys/types.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#else
+#include <Windows.h> // IsDebuggerPresent
+#endif
 
 #ifndef PTRACE_ATTACH
 #define PTRACE_ATTACH PT_ATTACH
@@ -19,6 +23,8 @@
 #endif
 
 static bool was_started_through_gdb_ = DetectGdb::is_running_through_gdb ();
+
+#ifndef _MSC_VER
 
 // http://stackoverflow.com/a/10973747/1513411
 // gdb apparently opens FD(s) 3,4,5 (whereas a typical program uses only stdin=0, stdout=1, stderr=2)
@@ -91,6 +97,16 @@ bool DetectGdb::
 
     return is_attached_by_system_debugger || is_attached_in_qt_creator;
 }
+
+#else
+
+bool DetectGdb::
+        is_running_through_gdb()
+{
+    return TRUE == IsDebuggerPresent();
+}
+
+#endif
 
 
 bool DetectGdb::
