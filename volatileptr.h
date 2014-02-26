@@ -4,11 +4,9 @@
 #include "unused.h"
 
 #include <boost/thread/shared_mutex.hpp>
-#include <boost/noncopyable.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/weak_ptr.hpp>
 #include <boost/exception/all.hpp>
-
 
 #ifndef VOLATILEPTR_THROW_EXCEPTION
   #ifdef VOLATILEPTR_NO_BACKTRACE
@@ -19,11 +17,21 @@
   #endif
 #endif
 
-
 class NoLockFailed {};
 class LockFailed: public virtual boost::exception, public virtual std::exception {
 public:
     typedef boost::error_info<struct timeout, int> timeout_value;
+
+    /**
+     When a timeout occurs on a lock VolatilePtr makes an attempt to detect
+     deadlocks. The thread with the timeout is blocked with another lock
+     attempt long enough (same timeout as in the first attempt) for any other
+     thread that is deadlocking with this thread to also fail its lock attempt.
+
+     The try_again value sais whether that second lock attempt succeeded, but
+     even if it succeeds LockFailed is still thrown.
+     */
+    typedef boost::error_info<struct try_again, bool> try_again_value;
 };
 
 
@@ -60,13 +68,21 @@ public:
  * Some examples might make more sense than this description;
  * see VolatilePtrTest::test ()
  *
- * The time overhead of locking an available object was about 3e-7 s on the
+ * VolatilePtr should cause a low overhead.
+ * The time overhead of locking an available object was about 800e-9 s on the
  * machine this was developed.
+ *
+ * 'NoLockFailed' should be fast.
+ * If you only want the lock if its readily available lock with
+ * 'A::WritePtr(a,NoLockFailed())'
+ * Don't use a timeout_ms=0 as that will instead throw an exception
+ * on a timeout, and the backtrace embedded in the exception can take
+ * up to 1 ms to be created.
  *
  * Author: johan.gustafsson@muchdifferent.com
  */
 template<typename T>
-class VolatilePtr: boost::noncopyable
+class VolatilePtr
 {
 protected:
 
@@ -85,6 +101,9 @@ public:
     typedef boost::shared_mutex shared_mutex;
 
     class LockFailed: public ::LockFailed {};
+
+    VolatilePtr(VolatilePtr const&) = delete;
+    VolatilePtr& operator=(VolatilePtr const&) = delete;
 
     ~VolatilePtr () {
         UNUSED(VolatilePtr* p) = (T*)0; // T is required to be a subtype of VolatilePtr<T>
@@ -107,12 +126,7 @@ public:
      * @see class VolatilePtr
      * @see class WritePtr
      */
-    class ReadPtr : boost::noncopyable {
-        // Can't implement a copy constructor as ReadPtr wouldn't be able to
-        // maintain the lock through a copy. If ReadPtr would release the lock and
-        // obtain a new lock the purpose of the class would be defeated.
-        // An attempt to lock again for reading may be blocked if another
-        // thread has attempted a write lock in between.
+    class ReadPtr {
     public:
         explicit ReadPtr (const Ptr& p, int timeout_ms=VolatilePtr_lock_timeout_ms)
             :   l_ (p->readWriteLock()),
@@ -177,10 +191,14 @@ public:
                 t_ = 0;
         }
 
+        // Can't implement a copy constructor as ReadPtr wouldn't be able to
+        // maintain the lock through a copy.
+        //
         // The copy constructor is not implemented anywhere and ReadPtr is not
         // copyable. But if a there is a public copy constructor the compiler
         // can perform return value optimization in read1 and write1.
         ReadPtr(const ReadPtr&);
+        ReadPtr& operator=(ReadPtr const&) = delete;
 
         ~ReadPtr() {
             // The destructor isn't called if the constructor throws.
@@ -201,11 +219,32 @@ public:
         ReadPtr(const T*);
 
         void lock(int timeout_ms) {
-            if (timeout_ms < 0)
+            // try_lock_shared_for and lock_shared are unnecessarily complex if
+            // the lock is available right away
+            if (l_->try_lock_shared ())
+            {
+                // Got lock
+            }
+            else if (timeout_ms < 0)
+            {
                 l_->lock_shared ();
-            else if (!l_->try_lock_shared_for (boost::chrono::milliseconds(timeout_ms)))
+            }
+            else if (l_->try_lock_shared_for (boost::chrono::milliseconds(timeout_ms)))
+            {
+                // Got lock
+            }
+            else
+            {
+                // If this is a deadlock, make both threads throw by keeping this thread blocked.
+                // See LockFailed::try_again
+                bool try_again = l_->try_lock_shared_for (boost::chrono::milliseconds(timeout_ms));
+                if (try_again)
+                    l_->unlock_shared ();
+
                 VOLATILEPTR_THROW_EXCEPTION(LockFailed()
-                                      << typename LockFailed::timeout_value(timeout_ms));
+                                      << typename LockFailed::timeout_value(timeout_ms)
+                                      << typename LockFailed::try_again_value(try_again));
+            }
         }
 
         shared_mutex* l_;
@@ -224,7 +263,7 @@ public:
      * @see class VolatilePtr
      * @see class ReadPtr
      */
-    class WritePtr : boost::noncopyable {
+    class WritePtr {
     public:
         explicit WritePtr (const Ptr& p, int timeout_ms=VolatilePtr_lock_timeout_ms)
             :   l_ (p->readWriteLock()),
@@ -270,6 +309,7 @@ public:
 
         // See ReadPtr(const ReadPtr&)
         WritePtr(const WritePtr&);
+        WritePtr& operator=(WritePtr const&) = delete;
 
         ~WritePtr() {
             if (t_)
@@ -285,12 +325,28 @@ public:
         // See ReadPtr(const T*)
         WritePtr (T* p);
 
+        // See ReadPtr::lock
         void lock(int timeout_ms) {
-            if (timeout_ms < 0)
+            if (l_->try_lock())
+            {
+            }
+            else if (timeout_ms < 0)
+            {
                 l_->lock ();
-            else if (!l_->try_lock_for (boost::chrono::milliseconds(timeout_ms)))
+            }
+            else if (l_->try_lock_for (boost::chrono::milliseconds(timeout_ms)))
+            {
+            }
+            else
+            {
+                bool try_again = l_->try_lock_for (boost::chrono::milliseconds(timeout_ms));
+                if (try_again)
+                    l_->unlock ();
+
                 VOLATILEPTR_THROW_EXCEPTION(LockFailed()
-                                      << typename LockFailed::timeout_value(timeout_ms));
+                                      << typename LockFailed::timeout_value(timeout_ms)
+                                      << typename LockFailed::try_again_value(try_again));
+            }
         }
 
         shared_mutex* l_;

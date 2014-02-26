@@ -54,6 +54,8 @@ public:
     A (const A& b) { *this = b; }
     A& operator= (const A& b);
 
+    int     noinlinecall() const { return printf (""); }
+
     int     a () const { return a_; }
     void    a (int v) { a_ = v; }
 
@@ -72,33 +74,11 @@ private:
     OrderOfOperationsCheck c_;
 };
 
-class simple_semaphore : public VolatilePtr<simple_semaphore>
-{
-public:
-    void aquire1() volatile { WritePtr(this)->aquire1(); }
-    void release1() volatile { WritePtr(this)->release1(); }
-
-private:
-    void aquire1() {
-        while (0 == i)
-            condition.wait( *readWriteLock() );
-        i--;
-    }
-
-    void release1() {
-        i++;
-        condition.notify_one();
-    }
-
-    int i;
-    condition_variable_any condition;
-};
-
 
 class B: public VolatilePtr<B>
 {
 public:
-    simple_semaphore semaphore;
+    int work_a_lot(int i) const;
 };
 
 
@@ -123,13 +103,14 @@ void VolatilePtrTest::
     // It should guarantee compile-time thread safe access to objects.
 
     EXCEPTION_ASSERT_EQUALS (sizeof (VolatilePtr<A>), sizeof (boost::shared_mutex));
-#ifndef _MSC_VER
+//    EXCEPTION_ASSERT_EQUALS (sizeof (QReadWriteLock), 8u);
     EXCEPTION_ASSERT_EQUALS (sizeof (boost::shared_mutex), 408u);
-#else
-    EXCEPTION_ASSERT_EQUALS (sizeof (boost::shared_mutex), sizeof(void*) * 4u);
-#endif
 
     A::Ptr mya (new A);
+
+    // can't read from mya
+    // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
+    // mya->a ();
 
     // can't write to mya
     // error: passing 'volatile A' as 'this' argument of 'void A::a (int)' discards qualifiers
@@ -147,10 +128,6 @@ void VolatilePtrTest::
     // Lock for a single call
     A::WritePtr (mya)->a (5);
     write1(mya)->a (5);
-
-    // can't read from mya
-    // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
-    // mya->a ();
 
     {
         // Lock for read access
@@ -262,8 +239,7 @@ void VolatilePtrTest::
     // statement, the lock is released after the entire statement has finished
     // executing.
     //
-    // So this example would create a deadlock. When that happens, attach a
-    // debugger to see on which line this occured.
+    // So this example would create a deadlock.
     // int deadlock = A::WritePtr (mya)->a () + A::WritePtr (mya)->a ();
     //
     // The following statement will ALSO create a deadlock if another thread
@@ -345,11 +321,19 @@ void A::
 
     // Note. To perform a lock ReadPtr needs non-const access to
     // this->VolatilePtr<A>::lock_. It would make sense though to create a
-    // ReadPtr from a const volatile instance. But this is a limited well
-    // defined access that doesn't violate the semantic meaning of "const A".
-    // So we let ReadPtr cast away the constness to perform the lock. ReadPtr
-    // then only provides a const reference through its accessors.
+    // ReadPtr from a const volatile instance. As this is a limited well
+    // defined access that doesn't violate the semantic meaning of "const A"
+    // we let ReadPtr cast away the constness to perform the lock. ReadPtr
+    // then only provides a const pointer through its accessors.
     A::ReadPtr (this)->a ();
+}
+
+
+int B::
+    work_a_lot(int /*i*/) const
+{
+    this_thread::sleep_for (chrono::milliseconds(5));
+    return 0;
 }
 
 
@@ -359,57 +343,75 @@ WriteWhileReadingThread::
       b(b)
 {}
 
-#include "tasktimer.h"
 
 void WriteWhileReadingThread::
         operator() ()
 {
-    b->semaphore.release1();
+    // Make sure readTwice starts before this function
+    this_thread::sleep_for (chrono::milliseconds(1));
 
-    // Write access should succeed when the first thread throws LockFailed.
-    B::WritePtr wp(b);
+    // Write access should succeed when the first thread fails a recursive ReadPtr.
+    B::WritePtr(b)->work_a_lot(5);
 }
+
 
 void readTwice(B::Ptr b) {
-    B::ReadPtr rp(b,10);
-
-    b->semaphore.aquire1(); // wait for the thread to start
-
-    // Assume this sleep is enough for the other thread to try to lock B with
-    // B::WritePtr. This implementation is timing-dependent and its purpose is
-    // to highlight a problem that is timing-dependent (i.e the fact that
-    // obtaining two instances of ReadPtr might succeed but its not
-    // guaranteed).
-    this_thread::sleep_for (chrono::milliseconds(1));
-    B::ReadPtr rp2(b,10);
+    // int i = read1(b)->work_a_lot(1) + read1(b)->work_a_lot(2);
+    // faster than default timeout
+    UNUSED(int i) = B::ReadPtr(b,10)->work_a_lot(3)
+                  + B::ReadPtr(b,10)->work_a_lot(4);
 }
+
 
 void writeTwice(B::Ptr b) {
-    B::WritePtr wp(b,10);
-    B::WritePtr wp2(b,10);
+    // int i = write1(b)->work_a_lot(3) + write1(b)->work_a_lot(4);
+    // faster than default timeout
+    UNUSED(int i) = B::WritePtr(b,10)->work_a_lot(1)
+                  + B::WritePtr(b,10)->work_a_lot(2);
 }
+
+
+// Implements Callable
+class UseAandB
+{
+public:
+    UseAandB(A::Ptr a, B::Ptr b) : a(a), b(b) {}
+
+    void operator()() {
+        try {
+
+            A::WritePtr aw(a, 2);
+            this_thread::sleep_for (chrono::milliseconds(1));
+            B::WritePtr bw(b, 2);
+
+        } catch (const B::LockFailed& x) {
+            const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
+            EXCEPTION_ASSERT(backtrace);
+        }
+    }
+
+private:
+    A::Ptr a;
+    B::Ptr b;
+
+public:
+    static void test();
+};
 
 void WriteWhileReadingThread::
         test()
 {
-    bool debug = false;
-#ifdef _DEBUG
-    debug = true;
-#endif
-
-    bool win32 = false;
-#ifdef _MSC_VER
-    if (sizeof(void*)==4)
-        win32 = true;
-#endif
-    // It should cause a dead-lock and detect it as such
+    // It should detect deadlocks from recursive locks
     {
         Timer timer;
-        B::Ptr b(new B);
+        B::Ptr b(new B());
 
-        // can't lock for write twice
+        // can't lock for write twice (recursive locks)
         EXPECT_EXCEPTION(B::LockFailed, writeTwice(b));
         EXPECT_EXCEPTION(LockFailed, writeTwice(b));
+
+        // can lock for read twice if no other thread locks for write inbetween
+        readTwice(b);
 
         // can't lock for read twice if another thread request a write in the middle
         WriteWhileReadingThread wb(b);
@@ -418,9 +420,31 @@ void WriteWhileReadingThread::
         EXPECT_EXCEPTION(LockFailed, readTwice(b));
         t.join ();
 
-        double T = timer.elapsed ();
-        EXCEPTION_ASSERT_LESS(40e-3, T);
-        EXCEPTION_ASSERT_LESS(T, 160e-3);
+        // Should be finished within 110 ms, but wait for at least 80 ms.
+        float T = timer.elapsed ();
+        //EXCEPTION_ASSERT_LESS(40e-3, T);
+        EXCEPTION_ASSERT_LESS(T, 110e-3);
+    }
+
+    // It should produce run-time exceptions with backtraces on deadlocks
+    {
+        A::Ptr a(new A());
+        B::Ptr b(new B());
+
+        boost::thread t = boost::thread(UseAandB(a,b));
+
+        try {
+
+            B::WritePtr bw(b, 2);
+            this_thread::sleep_for (chrono::milliseconds(1));
+            A::WritePtr aw(a, 2);
+
+        } catch (const A::LockFailed& x) {
+            const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
+            EXCEPTION_ASSERT(backtrace);
+        }
+
+        t.join ();
     }
 
     // 'NoLockFailed' should be fast
@@ -431,6 +455,10 @@ void WriteWhileReadingThread::
         A::WritePtr r(a);
         double T;
 
+        bool debug = false;
+    #ifdef _DEBUG
+        debug = true;
+    #endif
         bool gdb = DetectGdb::is_running_through_gdb();
 
         Timer timer;
@@ -438,79 +466,50 @@ void WriteWhileReadingThread::
             a->readWriteLock ()->try_lock ();
         }
         T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 10000e-9 : 250e-9 : 30e-9);
-#ifdef _MSC_VER
-        EXCEPTION_ASSERT_LESS(debug ? 20e-9 : 2e-9, T);
-#else
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 10000e-9 : 210e-9 : 300e-9);
         EXCEPTION_ASSERT_LESS(debug ? 20e-9 : 20e-9, T);
-#endif
 
         for (int i=0; i<1000; i++) {
             a->readWriteLock ()->try_lock_for(boost::chrono::milliseconds(0));
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, 4000e-9);
-#ifdef _MSC_VER
-        EXCEPTION_ASSERT_LESS(200e-9, T);
-#else
         EXCEPTION_ASSERT_LESS(300e-9, T);
-#endif
 
-        int failed_locks_count = 1000;
-#ifdef _MSC_VER
-        // Creating backtraces on windows is slow as symbols are resolved right away
-        failed_locks_count = debug ? 1 : 2;
-#endif
-
-        for (int i=0; i<failed_locks_count; i++) {
+        for (int i=0; i<1000; i++) {
             try { A::WritePtr(a,0); } catch (const LockFailed&) {}
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? 40000e-9 : 30000e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 9000e-9 : 6000e-9, T);
+        EXCEPTION_ASSERT_LESS(debug ? 12000e-9 : 6000e-9, T);
 
-        for (int i=0; i<failed_locks_count; i++) {
+        for (int i=0; i<1000; i++) {
             EXPECT_EXCEPTION(LockFailed, A::WritePtr(a,0));
         }
         T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 40000e-9 : 28000e-9 : 28000e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 9000e-9 : 6000e-9, T);
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 40000e-9 : 18000e-9 : 28000e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 10000e-9 : 6000e-9, T);
 
         for (int i=0; i<1000; i++) {
             A::WritePtr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
-#ifdef _MSC_VER
-        EXCEPTION_ASSERT_LESS(T, debug ? 130e9 : 30e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 100e-9 : 13e-9, T);
-#else
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 270e-9 : 220e-9 : 210e-9);
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 270e-9 : 220e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
-#endif
 
         for (int i=0; i<1000; i++) {
             A::ReadPtr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
-#ifdef _MSC_VER
-        EXCEPTION_ASSERT_LESS(T, debug ? 700e-9 : 30e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 100e-9 : 20e-9, T);
-#else
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 170e-9 : 190e-9);
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 170e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
-#endif
 
         for (int i=0; i<1000; i++) {
             A::ReadPtr(consta,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
-#ifdef _MSC_VER
-        EXCEPTION_ASSERT_LESS(T, debug ? win32 ? 600e-9 : 180e-9 : 40e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 100e-9 : 15e-9, T);
-#else
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 200e-9 : 260e-9 : 190e-9);
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 200e-9 : 260e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
-#endif
     }
 
     // It should cause a low overhead
@@ -524,28 +523,27 @@ void WriteWhileReadingThread::
         boost::shared_ptr<A> a(new A());
         Timer timer;
         for (int i=0; i<N; i++)
-            a->a();
-        double T = timer.elapsed ()/N;
+            a->noinlinecall ();
+        float T = timer.elapsed ()/N;
 
         A::Ptr a2(new A());
         Timer timer2;
         for (int i=0; i<N; i++)
-            A::WritePtr(a2)->a();
-        double T2 = timer2.elapsed ()/N;
+            A::WritePtr(a2)->noinlinecall();
+        float T2 = timer2.elapsed ()/N;
 
         Timer timer3;
         for (int i=0; i<N; i++)
-            A::ReadPtr(a2)->a();
-        double T3 = timer3.elapsed ()/N;
+            A::ReadPtr(a2)->noinlinecall();
+        float T3 = timer3.elapsed ()/N;
 
+        EXCEPTION_ASSERT_LESS(T, debug ? 100e-9 : 2e-9);
 #ifdef __GCC__
-        EXCEPTION_ASSERT_LESS(T2-T, 0.11e-6);
-        EXCEPTION_ASSERT_LESS(T3-T, 0.11e-6);
+        EXCEPTION_ASSERT_LESS(T2-T, 110e-9);
+        EXCEPTION_ASSERT_LESS(T3-T, 110e-9);
 #else
-//        EXCEPTION_ASSERT_LESS(T2-T, 0.18e-6);
-//        EXCEPTION_ASSERT_LESS(T3-T, 0.14e-6);
-        EXCEPTION_ASSERT_LESS(T2-T, debug ? win32 ? 3e-6 : 0.7e-6 : 0.8e-6);
-        EXCEPTION_ASSERT_LESS(T3-T, debug ? win32 ? 3e-6 : 0.7e-6 : 0.9e-6);
+        EXCEPTION_ASSERT_LESS(T2-T, debug ? 440e-9 : 250e-9);
+        EXCEPTION_ASSERT_LESS(T3-T, debug ? 440e-9 : 220e-9);
 #endif
     }
 }

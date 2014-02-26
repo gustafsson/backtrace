@@ -36,7 +36,7 @@ OBJECTS       = \
 		tasktimer.o \
 		timer.o \
 		unittest.o \
-		volatileptr.o
+		volatileptr.o \
 
 all: $(TARGET)
 
