@@ -15,20 +15,37 @@ void throw_catchable_segfault_exception_noinline()
 
 void throw_catchable_segfault_exception2_noinline()
 {
-    throw_catchable_segfault_exception2();
+	// try/catch needed here to prevent inlining in 32-bit builds on 64-bit windows (WOW64)
+	try {
+		throw_catchable_segfault_exception2();
+	} catch(...) {
+		throw;
+	}
 }
 
 void throw_catchable_segfault_exception3_noinline()
 {
-    throw_catchable_segfault_exception3();
+	try {
+	    throw_catchable_segfault_exception3();
+	} catch(...) {
+		throw;
+	}
 }
 
 void throw_catchable_segfault_exception4_noinline()
 {
-    throw_catchable_segfault_exception4();
+	try {
+	    throw_catchable_segfault_exception4();
+	} catch(...) {
+		throw;
+	}
 }
 
 void throw_catchable_segfault_exception5_noinline()
 {
-    throw_catchable_segfault_exception5();
+	try {
+		throw_catchable_segfault_exception5();
+	} catch(...) {
+		throw;
+	}
 }

@@ -13,7 +13,7 @@
 	clr:pure).
 */
 
-#define Cva_start(name, argument) Cva_list name; va_start(name,argument);
+#define Cva_start(name, argument) Cva_list name; va_start((va_list)name,argument);
 
 class Cva_list
 {

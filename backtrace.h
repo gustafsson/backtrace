@@ -14,6 +14,9 @@
  * It should translate to a pretty backtrace when asked for a string representation.
  *
  * Include debug info '-g' for this to work.
+ *
+ * On windows each backtrace of all threads in this process is included when
+ * creating backtrace.
  */
 class Backtrace
     {

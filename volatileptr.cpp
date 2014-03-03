@@ -72,11 +72,33 @@ private:
     OrderOfOperationsCheck c_;
 };
 
+class simple_semaphore : public VolatilePtr<simple_semaphore>
+{
+public:
+    void aquire1() volatile { WritePtr(this)->aquire1(); }
+    void release1() volatile { WritePtr(this)->release1(); }
+
+private:
+    void aquire1() {
+        while (0 == i)
+            condition.wait( *readWriteLock() );
+        i--;
+    }
+
+    void release1() {
+        i++;
+        condition.notify_one();
+    }
+
+    int i;
+    condition_variable_any condition;
+};
+
 
 class B: public VolatilePtr<B>
 {
 public:
-    int work_a_lot(int i) const;
+    simple_semaphore semaphore;
 };
 
 
@@ -101,14 +123,13 @@ void VolatilePtrTest::
     // It should guarantee compile-time thread safe access to objects.
 
     EXCEPTION_ASSERT_EQUALS (sizeof (VolatilePtr<A>), sizeof (boost::shared_mutex));
-//    EXCEPTION_ASSERT_EQUALS (sizeof (QReadWriteLock), 8u);
+#ifndef _MSC_VER
     EXCEPTION_ASSERT_EQUALS (sizeof (boost::shared_mutex), 408u);
+#else
+    EXCEPTION_ASSERT_EQUALS (sizeof (boost::shared_mutex), sizeof(void*) * 4u);
+#endif
 
     A::Ptr mya (new A);
-
-    // can't read from mya
-    // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
-    // mya->a ();
 
     // can't write to mya
     // error: passing 'volatile A' as 'this' argument of 'void A::a (int)' discards qualifiers
@@ -126,6 +147,10 @@ void VolatilePtrTest::
     // Lock for a single call
     A::WritePtr (mya)->a (5);
     write1(mya)->a (5);
+
+    // can't read from mya
+    // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
+    // mya->a ();
 
     {
         // Lock for read access
@@ -328,14 +353,6 @@ void A::
 }
 
 
-int B::
-    work_a_lot(int /*i*/) const
-{
-    this_thread::sleep_for (chrono::milliseconds(5));
-    return 0;
-}
-
-
 WriteWhileReadingThread::
         WriteWhileReadingThread(B::Ptr b)
     :
@@ -347,34 +364,48 @@ WriteWhileReadingThread::
 void WriteWhileReadingThread::
         operator() ()
 {
-    this_thread::sleep_for (chrono::milliseconds(3));
+    b->semaphore.release1();
 
     // Write access should succeed when the first thread throws LockFailed.
-    B::WritePtr(b)->work_a_lot(5);
+    B::WritePtr wp(b);
 }
 
-
 void readTwice(B::Ptr b) {
-    // int i = read1(b)->work_a_lot(1) + read1(b)->work_a_lot(2);
-    // faster
-    UNUSED(int i) = B::ReadPtr(b,10)->work_a_lot(3)
-                  + B::ReadPtr(b,10)->work_a_lot(4);
+    B::ReadPtr rp(b,10);
+
+    b->semaphore.aquire1(); // wait for the thread to start
+
+    // Assume this sleep is enough for the other thread to try to lock B with
+    // B::WritePtr. This implementation is timing-dependent and its purpose is
+    // to highlight a problem that is timing-dependent (i.e the fact that
+    // obtaining two instances of ReadPtr might succeed but its not
+    // guaranteed).
+    this_thread::sleep_for (chrono::milliseconds(1));
+    B::ReadPtr rp2(b,10);
 }
 
 void writeTwice(B::Ptr b) {
-    // int i = write1(b)->work_a_lot(3) + write1(b)->work_a_lot(4);
-    // faster
-    UNUSED(int i) = B::WritePtr(b,10)->work_a_lot(1)
-                  + B::WritePtr(b,10)->work_a_lot(2);
+    B::WritePtr wp(b,10);
+    B::WritePtr wp2(b,10);
 }
 
 void WriteWhileReadingThread::
         test()
 {
+    bool debug = false;
+#ifdef _DEBUG
+    debug = true;
+#endif
+
+    bool win32 = false;
+#ifdef _MSC_VER
+    if (sizeof(void*)==4)
+        win32 = true;
+#endif
     // It should cause a dead-lock and detect it as such
     {
         Timer timer;
-        B::Ptr b(new B());
+        B::Ptr b(new B);
 
         // can't lock for write twice
         EXPECT_EXCEPTION(B::LockFailed, writeTwice(b));
@@ -387,10 +418,9 @@ void WriteWhileReadingThread::
         EXPECT_EXCEPTION(LockFailed, readTwice(b));
         t.join ();
 
-        // Should be finished within 70 ms, but wait for at least 40 ms.
-        float T = timer.elapsed ();
-        //EXCEPTION_ASSERT_LESS(40e-3, T);
-        EXCEPTION_ASSERT_LESS(T, 70e-3);
+        double T = timer.elapsed ();
+        EXCEPTION_ASSERT_LESS(40e-3, T);
+        EXCEPTION_ASSERT_LESS(T, 160e-3);
     }
 
     // 'NoLockFailed' should be fast
@@ -401,10 +431,6 @@ void WriteWhileReadingThread::
         A::WritePtr r(a);
         double T;
 
-        bool debug = false;
-    #ifdef _DEBUG
-        debug = true;
-    #endif
         bool gdb = DetectGdb::is_running_through_gdb();
 
         Timer timer;
@@ -412,50 +438,79 @@ void WriteWhileReadingThread::
             a->readWriteLock ()->try_lock ();
         }
         T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 10000e-9 : 210e-9 : 300e-9);
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 10000e-9 : 250e-9 : 30e-9);
+#ifdef _MSC_VER
+        EXCEPTION_ASSERT_LESS(debug ? 20e-9 : 2e-9, T);
+#else
         EXCEPTION_ASSERT_LESS(debug ? 20e-9 : 20e-9, T);
+#endif
 
         for (int i=0; i<1000; i++) {
             a->readWriteLock ()->try_lock_for(boost::chrono::milliseconds(0));
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, 4000e-9);
+#ifdef _MSC_VER
+        EXCEPTION_ASSERT_LESS(200e-9, T);
+#else
         EXCEPTION_ASSERT_LESS(300e-9, T);
+#endif
 
-        for (int i=0; i<1000; i++) {
+        int failed_locks_count = 1000;
+#ifdef _MSC_VER
+        // Creating backtraces on windows is slow as symbols are resolved right away
+        failed_locks_count = debug ? 1 : 2;
+#endif
+
+        for (int i=0; i<failed_locks_count; i++) {
             try { A::WritePtr(a,0); } catch (const LockFailed&) {}
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? 40000e-9 : 30000e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 12000e-9 : 6000e-9, T);
+        EXCEPTION_ASSERT_LESS(debug ? 9000e-9 : 6000e-9, T);
 
-        for (int i=0; i<1000; i++) {
+        for (int i=0; i<failed_locks_count; i++) {
             EXPECT_EXCEPTION(LockFailed, A::WritePtr(a,0));
         }
         T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 40000e-9 : 18000e-9 : 28000e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 10000e-9 : 6000e-9, T);
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 40000e-9 : 28000e-9 : 28000e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 9000e-9 : 6000e-9, T);
 
         for (int i=0; i<1000; i++) {
             A::WritePtr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
+#ifdef _MSC_VER
+        EXCEPTION_ASSERT_LESS(T, debug ? 130e9 : 30e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 100e-9 : 13e-9, T);
+#else
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 270e-9 : 220e-9 : 210e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
+#endif
 
         for (int i=0; i<1000; i++) {
             A::ReadPtr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
+#ifdef _MSC_VER
+        EXCEPTION_ASSERT_LESS(T, debug ? 700e-9 : 30e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 100e-9 : 20e-9, T);
+#else
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 170e-9 : 190e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
+#endif
 
         for (int i=0; i<1000; i++) {
             A::ReadPtr(consta,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
+#ifdef _MSC_VER
+        EXCEPTION_ASSERT_LESS(T, debug ? win32 ? 600e-9 : 180e-9 : 40e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 100e-9 : 15e-9, T);
+#else
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 200e-9 : 260e-9 : 190e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
+#endif
     }
 
     // It should cause a low overhead
@@ -470,18 +525,18 @@ void WriteWhileReadingThread::
         Timer timer;
         for (int i=0; i<N; i++)
             a->a();
-        float T = timer.elapsed ()/N;
+        double T = timer.elapsed ()/N;
 
         A::Ptr a2(new A());
         Timer timer2;
         for (int i=0; i<N; i++)
             A::WritePtr(a2)->a();
-        float T2 = timer2.elapsed ()/N;
+        double T2 = timer2.elapsed ()/N;
 
         Timer timer3;
         for (int i=0; i<N; i++)
             A::ReadPtr(a2)->a();
-        float T3 = timer3.elapsed ()/N;
+        double T3 = timer3.elapsed ()/N;
 
 #ifdef __GCC__
         EXCEPTION_ASSERT_LESS(T2-T, 0.11e-6);
@@ -489,8 +544,8 @@ void WriteWhileReadingThread::
 #else
 //        EXCEPTION_ASSERT_LESS(T2-T, 0.18e-6);
 //        EXCEPTION_ASSERT_LESS(T3-T, 0.14e-6);
-        EXCEPTION_ASSERT_LESS(T2-T, debug ? 0.7e-6 : 0.8e-6);
-        EXCEPTION_ASSERT_LESS(T3-T, debug ? 0.7e-6 : 0.9e-6);
+        EXCEPTION_ASSERT_LESS(T2-T, debug ? win32 ? 3e-6 : 0.7e-6 : 0.8e-6);
+        EXCEPTION_ASSERT_LESS(T3-T, debug ? win32 ? 3e-6 : 0.7e-6 : 0.9e-6);
 #endif
     }
 }

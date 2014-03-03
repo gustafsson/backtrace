@@ -7,6 +7,10 @@
 
 #include <signal.h>
 
+#ifdef _MSC_VER
+#include <Windows.h>
+#endif
+
 bool is_doing_signal_handling = false;
 bool has_caught_any_signal_value = false;
 bool enable_signal_print = true;
@@ -16,6 +20,7 @@ int last_caught_signal = 0;
 void handler(int sig);
 void printSignalInfo(int sig, bool);
 
+#ifndef _MSC_VER
 void seghandle_userspace() {
   // note: because we set up a proper stackframe,
   // unwinding is safe from here.
@@ -86,7 +91,7 @@ void setup_signal_survivor(int sig)
   bool sigsegv_handler = sigaction(sig, &sa, NULL) != -1;
   EXCEPTION_ASSERTX(sigsegv_handler, "failed to setup SIGSEGV handler");
 }
-
+#endif
 
 void handler(int sig)
 {
@@ -245,7 +250,8 @@ LONG WINAPI MyUnhandledExceptionFilter(
 )
 {
     DWORD code = ExceptionInfo->ExceptionRecord->ExceptionCode;
-    TaskInfo ti("Caught UnhandledException %s(%d) %s", ExceptionCodeName(code), code, ExceptionCodeDescription(code));
+    if (enable_signal_print)
+        TaskInfo("Caught UnhandledException %s(0x%x) %s", ExceptionCodeName(code), code, ExceptionCodeDescription(code));
 
     // Translate from Windows Structured Exception to C signal.
     //C signals known in Windows:
@@ -261,6 +267,7 @@ LONG WINAPI MyUnhandledExceptionFilter(
     //#define SIGABRT_COMPAT  6       /* SIGABRT compatible with other platforms, same as SIGABRT */
 
     // http://msdn.microsoft.com/en-us/library/windows/desktop/aa363082(v=vs.85).aspx
+    int sig=0;
     switch (ExceptionInfo->ExceptionRecord->ExceptionCode)
     {
     case EXCEPTION_ACCESS_VIOLATION:
@@ -277,10 +284,10 @@ LONG WINAPI MyUnhandledExceptionFilter(
     case EXCEPTION_POSSIBLE_DEADLOCK:
 #endif
     case CONTROL_C_EXIT:
-        handler(SIGSEGV);
+        sig = SIGSEGV;
         break;
     case EXCEPTION_ILLEGAL_INSTRUCTION:
-        handler(SIGILL);
+        sig = SIGILL;
         break;
     case EXCEPTION_FLT_DENORMAL_OPERAND:
     case EXCEPTION_FLT_DIVIDE_BY_ZERO:
@@ -291,14 +298,27 @@ LONG WINAPI MyUnhandledExceptionFilter(
     case EXCEPTION_FLT_UNDERFLOW:
     case EXCEPTION_INT_DIVIDE_BY_ZERO:
     case EXCEPTION_INT_OVERFLOW:
-        handler(SIGFPE);
+        sig = SIGFPE;
         break;
     case EXCEPTION_BREAKPOINT:
     case EXCEPTION_SINGLE_STEP:
     default:
         break;
     }
-    return EXCEPTION_CONTINUE_SEARCH; // default exception handling, handler usually throws a C++ exception before this line.
+
+    if (sig) {
+        fflush(stdout);
+        fflush(stderr);
+
+        if (enable_signal_print)
+            Backtrace::malloc_free_log ();
+
+        printSignalInfo(sig, false);
+        // unreachable, printSignalInfo throws a C++ exception for SIGFPE, SIGSEGV and SIGILL
+    }
+
+    // carry on with default exception handling
+    return EXCEPTION_CONTINUE_SEARCH;
 }
 #endif // _MSC_VER
 
@@ -324,7 +344,6 @@ void PrettifySegfault::
             break;
         }
     }
-
 #else
     SetUnhandledExceptionFilter(MyUnhandledExceptionFilter);
 #endif
@@ -348,10 +367,11 @@ void PrettifySegfault::
 #include "detectgdb.h"
 
 
+#if BOOST_CLANG
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnull-dereference"
 #pragma clang diagnostic ignored "-Wself-assign"
-
+#endif
 
 void throw_catchable_segfault_exception()
 {
@@ -364,6 +384,7 @@ void throw_catchable_segfault_exception2()
 {
     std::vector<std::vector<int> >(); // create and destroy a complex type in the same scope
     int a[100];
+    memset(a, 0, sizeof(a));
     a[0] = a[1] + 10;
 
     *(int*) NULL = 0;
@@ -411,8 +432,9 @@ void throw_catchable_segfault_exception5()
 
 
 
+#if BOOST_CLANG
 #pragma clang diagnostic pop
-
+#endif
 
 void throw_catchable_segfault_exception_noinline();
 void throw_catchable_segfault_exception2_noinline();
@@ -457,12 +479,14 @@ void PrettifySegfault::
     }
 
     // It returns immediately from the signalling function without unwinding
-    // the scope and thus break the RAII assumption that a destructor will
-    // always be called.
+    // that scope and thus break the RAII assumption that a destructor will
+    // always be called (does not apply in windows)
     {
         EXCEPTION_ASSERT(breaks_RAII_assumptions::constructor_was_called);
+#ifndef _MSC_VER
         EXCEPTION_ASSERT(!breaks_RAII_assumptions::destructor_was_called);
         breaks_RAII_assumptions(); // This calls the destructor
+#endif
         EXCEPTION_ASSERT(breaks_RAII_assumptions::destructor_was_called);
     }
 }

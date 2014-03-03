@@ -64,7 +64,7 @@ static ThreadInfo& T() {
     if (!thread_info_map.count (threadid))
         thread_info_map.insert (
                     std::pair<thread::id, ThreadInfo>(threadid,
-                    ThreadInfo(thread_info_map.size ())));
+                    ThreadInfo((int)thread_info_map.size ())));
 
     return thread_info_map[threadid];
 }
@@ -310,7 +310,7 @@ void TaskTimer::partlyDone() {
 }
 
 
-float TaskTimer::elapsedTime()
+double TaskTimer::elapsedTime()
 {
 #ifdef _MSC_VER
     LARGE_INTEGER li;
@@ -335,8 +335,8 @@ TaskTimer::~TaskTimer() {
 
     TaskTimerLock scope(staticLock);
 
-    float d = elapsedTime();
-    time_duration diff = microseconds(d*1e6);
+    double d = elapsedTime();
+    time_duration diff = microseconds((int)(d*1e6 + 0.5));
 
     bool didIdent = printIndentation();
 

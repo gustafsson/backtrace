@@ -3,7 +3,7 @@
 
 // avoid warning: unused variable
 #ifdef _MSC_VER
-#define UNUSED(X) (void) X
+#define UNUSED(X) X
 #else
 #define UNUSED(X) X __attribute__ ((unused))
 #endif

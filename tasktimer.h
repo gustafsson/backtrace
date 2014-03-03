@@ -97,7 +97,7 @@ public:
     void info(const char* taskInfo, ...);
     void partlyDone();
     void suppressTiming();
-    float elapsedTime();
+    double elapsedTime();
 
     #if defined(__cplusplus) && !defined(__CUDACC__)
         static void setLogLevelStream( LogLevel logLevel, std::ostream* str );

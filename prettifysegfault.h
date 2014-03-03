@@ -16,26 +16,32 @@
  *     will still crash the process, but there should at least be
  *     some info in the log.
  *
+ * While at it, PrettifySegfault::setup() sets up logging of all other signal
+ * types as well if they are detected, but without taking any further action.
+ * (except SIGCHLD which is ignored)
+ *
+ *
+ * Windows specific
+ * Backtraces works in 64-bit windows on 64-bit builds but not on 32-bit bulids (WOW64).
+ *
+ *
+ * GCC/CLANG specific information below
+ * (these concerns does not apply to MSC where the implementation is based on SEH)
+ *
  * Throwing from within a signal handler is undefined behavior. This
  * implementation is based on a hack to rewrite the function stack. Please
  * refer to 'feepingcreature' for the full explanation at
  * http://feepingcreature.github.io/handling.html
  *
- * !!!
  * However, this doesn't always work. See note number 4 at the url above. And
  * it returns immediately from the signalling function without unwinding
  * the scope and thus break the RAII assumption that a destructor will
  * always be called. I.e leaking resources and potentially leaving the
  * process in an unconsistent state (and this is in addition to any harm that
  * happened before the original SIGSEGV/SIGILL was detected).
- * !!!
+ *
  * So don't rely on this class, it's not a safety net, it merely serves to
  * quickly indicate the location of a severe error when it occurs.
- * !!!
- *
- * While at it, PrettifySegfault::setup() sets up logging of all other signal
- * types as well if they are detected, but without taking any further action.
- * (except SIGCHLD which is ignored)
  */
 class PrettifySegfault
 {
