@@ -1,2 +1,8 @@
 *.o
 backtrace-unittest
+Debug
+Release
+x64
+*.suo
+*.vcxproj.user
+*.vcxproj.filters
