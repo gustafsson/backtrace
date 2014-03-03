@@ -305,7 +305,9 @@ static void throwfunction()
 void Backtrace::
         test()
 {
-    // It should store a backtrace of the call stack in 30 ms
+    // It should store a backtrace of the call stack in 1 ms,
+    // except for windows where it should takes 30 ms but
+    // include a backtrace from all threads.
     {
 #ifdef _MSC_VER
         {
