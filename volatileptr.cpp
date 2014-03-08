@@ -47,10 +47,15 @@ private:
 };
 
 
-class A: public VolatilePtr<A>
+class A
 {
 public:
-    A (int timeout_ms=1, int verify_execution_time_ms=-1) : VolatilePtr(timeout_ms,verify_execution_time_ms) {}
+    typedef VolatilePtr<A> Ptr;
+    typedef VolatilePtr<const A> ConstPtr;
+    typedef Ptr::ReadPtr ReadPtr;
+    typedef Ptr::WritePtr WritePtr;
+
+    A () {}
     A (const A& b) { *this = b; }
     A& operator= (const A& b);
 
@@ -64,10 +69,6 @@ public:
 
     void b() { }
 
-    boost::shared_mutex* readWriteLock() const volatile {
-        return VolatilePtr::readWriteLock ();
-    }
-
 private:
 
     int a_;
@@ -75,10 +76,12 @@ private:
 };
 
 
-class B: public VolatilePtr<B>
+class B
 {
 public:
-    B(int timeout_ms=10) : VolatilePtr(timeout_ms,-1) {}
+    typedef VolatilePtr<B> Ptr;
+    typedef Ptr::ReadPtr ReadPtr;
+    typedef Ptr::WritePtr WritePtr;
 
     int work_a_lot(int i) const;
 };
@@ -103,7 +106,7 @@ void VolatilePtrTest::
         test ()
 {
     // It should guarantee compile-time thread safe access to objects.
-    A::Ptr mya (new A);
+    A::Ptr mya (new A, 1, -1);
 
     // can't read from mya
     // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
@@ -159,12 +162,6 @@ void VolatilePtrTest::
     // Can not create a WritePtr to a const pointer.
     // error: no matching function for call to 'VolatilePtr<A>::WritePtr::WritePtr (VolatilePtr<A>::ConstPtr)'
     // A::WritePtr (consta)->a ();
-
-    // Locked ptr should not call volatile methods because recursive locking is
-    // not allowed. A::test is volatile and performs a lock on itself. Hence
-    // this call results in a deadlock, but VolatilePtr throws a LockFailed if
-    // the lock couldn't be obatined within a timeout.
-    EXPECT_EXCEPTION(LockFailed, A::WritePtr (mya)->test ());
 
     {
         // Bad practice
@@ -252,21 +249,21 @@ void VolatilePtrTest::
 
     // It should be accessible from various pointer types
     {
-        const A::Ptr mya1(new A);
+        const A::Ptr mya1(new A, 1, -1);
         {A::ReadPtr r(mya1);}
         {A::WritePtr w(mya1);}
 
-        const volatile A::Ptr mya2(new A);
+        const volatile A::Ptr mya2(new A, 1, -1);
         {A::ReadPtr r(mya2);}
         {A::WritePtr w(mya2);}
 
-        const volatile A::ConstPtr mya3(new A);
+        const volatile A::ConstPtr mya3(new A, 1, -1);
         {A::ReadPtr r(mya3);}
 
-        A::ConstPtr mya4(new A);
-        A::ReadPtr(mya4.get ());
+        A::ConstPtr mya4(new A, 1, -1);
+        {A::ReadPtr r(mya4);}
 
-        A::WritePtr(mya.get ());
+        {A::WritePtr w(mya);}
     }
 
     // Verify the behaviour of a practice usually frowned upon; throwing from constructors.
@@ -285,7 +282,7 @@ void VolatilePtrTest::
     // 'NoLockFailed' should be fast, with less than a 0.1 microsecond overhead
     // in a 'release' build.
     {
-        A::Ptr a(new A(0));
+        A::Ptr a(new A, 0, -1);
         A::ConstPtr consta(a);
 
         A::WritePtr r(a);
@@ -299,14 +296,14 @@ void VolatilePtrTest::
 
         Timer timer;
         for (int i=0; i<1000; i++) {
-            a->readWriteLock ()->try_lock ();
+            a.readWriteLock ()->try_lock ();
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 10000e-9 : 210e-9 : 300e-9);
         EXCEPTION_ASSERT_LESS(debug ? 20e-9 : 20e-9, T);
 
         for (int i=0; i<1000; i++) {
-            a->readWriteLock ()->try_lock_for(boost::chrono::milliseconds(0));
+            a.readWriteLock ()->try_lock_for(boost::chrono::milliseconds(0));
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? 8000e-9 : 4000e-9);
@@ -357,13 +354,13 @@ void VolatilePtrTest::
 
         int N = 100000;
 
-        boost::shared_ptr<A> a(new A(1,0));
+        boost::shared_ptr<A> a(new A);
         Timer timer;
         for (int i=0; i<N; i++)
             a->noinlinecall ();
         float T = timer.elapsed ()/N;
 
-        A::Ptr a2(new A());
+        A::Ptr a2(new A, 1, -1);
         Timer timer2;
         for (int i=0; i<N; i++)
             A::WritePtr(a2)->noinlinecall();
@@ -392,13 +389,13 @@ void VolatilePtrTest::
     #endif
 
         int N = 100000;
-        boost::shared_ptr<A> a(new A());
+        boost::shared_ptr<A> a(new A);
         Timer timer;
         for (int i=0; i<N; i++)
             a->noinlinecall ();
         float T = timer.elapsed ()/N;
 
-        A::Ptr a2(new A());
+        A::Ptr a2(new A, 1, 1000);
         Timer timer2;
         for (int i=0; i<N; i++)
             A::WritePtr(a2)->noinlinecall();
@@ -449,25 +446,30 @@ A& A::
 void A::
         test () volatile
 {
-    // Lock on 'this'. A suggested practice is to refer to the non-volatile this as 'self'.
-    A::WritePtr self (this);
-    self->a (5);
-    self->c_ = 3;
+    // Can't call non-volatile methods
+    // error: no matching member function for call to 'a'
+    // this->a ();
+    // (there is a method a () but it is not declared volatile)
+
+    // volatile applies to member variables
+    // error: no viable overloaded '='
+    // this->c_ = 3;
+    // (there is an operator= but it is not declared volatile)
 }
 
 
 void A::
         consttest () const volatile
 {
-    // Lock on 'this'
+    // Can't call non-volatile methods
+    // error: no matching member function for call to 'a'
+    // this->a ();
+    // (there is a method a () but it is not declared const volatile)
 
-    // Note. To perform a lock ReadPtr needs non-const access to
-    // this->VolatilePtr<A>::lock_. It would make sense though to create a
-    // ReadPtr from a const volatile instance. As this is a limited well
-    // defined access that doesn't violate the semantic meaning of "const A"
-    // we let ReadPtr cast away the constness to perform the lock. ReadPtr
-    // then only provides a const pointer through its accessors.
-    A::ReadPtr (this)->a ();
+    // const volatile applies to member variables
+    // error: no viable overloaded '='
+    // this->c_ = 3;
+    // (there is an operator= but it is not declared const volatile)
 }
 
 
@@ -500,16 +502,18 @@ void WriteWhileReadingThread::
 void readTwice(B::Ptr b) {
     // int i = read1(b)->work_a_lot(1) + read1(b)->work_a_lot(2);
     // faster than default timeout
-    UNUSED(int i) = B::ReadPtr(b)->work_a_lot(3)
-                  + B::ReadPtr(b)->work_a_lot(4);
+    int i = B::ReadPtr(b)->work_a_lot(3)
+          + B::ReadPtr(b)->work_a_lot(4);
+    (void) i;
 }
 
 
 void writeTwice(B::Ptr b) {
     // int i = write1(b)->work_a_lot(3) + write1(b)->work_a_lot(4);
     // faster than default timeout
-    UNUSED(int i) = B::WritePtr(b)->work_a_lot(1)
-                  + B::WritePtr(b)->work_a_lot(2);
+    int i = B::WritePtr(b)->work_a_lot(1)
+          + B::WritePtr(b)->work_a_lot(2);
+    (void) i;
 }
 
 
@@ -526,7 +530,7 @@ public:
             this_thread::sleep_for (chrono::milliseconds(1));
             B::WritePtr bw(b);
 
-        } catch (const B::LockFailed& x) {
+        } catch (const B::Ptr::LockFailed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
             EXCEPTION_ASSERT(backtrace);
         }
@@ -547,10 +551,10 @@ void WriteWhileReadingThread::
     // It should detect deadlocks from recursive locks
     {
         Timer timer;
-        B::Ptr b(new B());
+        B::Ptr b(new B, 10, -1);
 
         // can't lock for write twice (recursive locks)
-        EXPECT_EXCEPTION(B::LockFailed, writeTwice(b));
+        EXPECT_EXCEPTION(B::Ptr::LockFailed, writeTwice(b));
         EXPECT_EXCEPTION(LockFailed, writeTwice(b));
 
         // can lock for read twice if no other thread locks for write in-between
@@ -574,8 +578,8 @@ void WriteWhileReadingThread::
 
     // It should produce run-time exceptions with backtraces on deadlocks
     {
-        A::Ptr a(new A(2));
-        B::Ptr b(new B(2));
+        A::Ptr a(new A, 2, -1);
+        B::Ptr b(new B, 2, -1);
 
         boost::thread t = boost::thread(UseAandB(a,b));
 
@@ -585,7 +589,7 @@ void WriteWhileReadingThread::
             this_thread::sleep_for (chrono::milliseconds(1));
             A::WritePtr aw(a);
 
-        } catch (const A::LockFailed& x) {
+        } catch (const A::Ptr::LockFailed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
             EXCEPTION_ASSERT(backtrace);
         }
@@ -596,7 +600,7 @@ void WriteWhileReadingThread::
     // It should silently warn if a lock is kept so long that a simultaneous lock
     // attempt would fail.
     {
-        A::Ptr a(new A(1,1));
+        A::Ptr a(new A, 1, 1);
 
         bool did_report = false;
 
