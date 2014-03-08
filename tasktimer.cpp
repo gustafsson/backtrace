@@ -358,18 +358,7 @@ TaskTimer::~TaskTimer() {
             logprint(" ");
         }
 
-//        if ( diff.total_nanoseconds()<1500 && diff.total_nanoseconds() != 1000) {
-//            logprint(str(format("%s %u ns.\n") % finish_message % (unsigned)diff.total_nanoseconds()).c_str());
-//        } else
-        if (diff.total_microseconds() <1500 && diff.total_microseconds() != 1000) {
-            logprint(str(format("%s %.0f us.\n") % finish_message % (float)(diff.total_nanoseconds()/1000.0f)).c_str());
-        } else if (diff.total_milliseconds() <1500 && diff.total_milliseconds() != 1000) {
-            logprint(str(format("%s %.1f ms.\n") % finish_message % (float)(diff.total_microseconds()/1000.0f)).c_str());
-        } else if (diff.total_seconds()<90) {
-            logprint(str(format("%s %.1f s.\n") % finish_message % (float)(diff.total_milliseconds()/1000.f)).c_str());
-        } else {
-            logprint(str(format("%s %.1f min.\n") % finish_message % (float)(diff.total_seconds()/60.f)).c_str());
-        }
+        logprint(str(format("%s %s.\n") % finish_message % timeToString (diff)).c_str ());
     } else {
         if (didIdent) {
             logprint(finish_message.c_str());
@@ -442,6 +431,23 @@ void TaskTimer::
         setEnabled( bool enabled )
 {
     DISABLE_TASKTIMER = !enabled;
+}
+
+std::string TaskTimer::
+        timeToString( time_duration diff )
+{
+//    if ( diff.total_nanoseconds()<1500 && diff.total_nanoseconds() != 1000) {
+//        return str(format("%u ns") % (unsigned)diff.total_nanoseconds()).c_str();
+//    } else
+    if (diff.total_microseconds() <1500 && diff.total_microseconds() != 1000) {
+        return str(format("%.0f us") % (float)(diff.total_nanoseconds()/1000.0f)).c_str();
+    } else if (diff.total_milliseconds() <1500 && diff.total_milliseconds() != 1000) {
+        return str(format("%.1f ms") % (float)(diff.total_microseconds()/1000.0f)).c_str();
+    } else if (diff.total_seconds()<90) {
+        return str(format("%.1f s") % (float)(diff.total_milliseconds()/1000.f)).c_str();
+    } else {
+        return str(format("%.1f min") % (float)(diff.total_seconds()/60.f)).c_str();
+    }
 }
 
 TaskInfo::

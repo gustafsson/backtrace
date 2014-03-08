@@ -106,6 +106,7 @@ public:
 
     static bool enabled();
     static void setEnabled( bool );
+    static std::string timeToString( boost::posix_time::time_duration diff );
 
 private:
     boost::posix_time::ptime startTime;

@@ -6,8 +6,12 @@
 #endif
 
 /**
- * @brief The Timer class should measure time with a high accuracy
+ * @brief The Timer class should measure duration with a high accuracy
  * (at least 0.1-millisecond resolution).
+ *
+ * It should have an overhead less than 0.8 microseconds when inactive in a
+ * 'release' build (inacive in the sense that an instance is created but no
+ * method is called).
  */
 class Timer
 {

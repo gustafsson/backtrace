@@ -6,6 +6,7 @@
 #include "volatileptr.h"
 #include "tasktimer.h"
 #include "timer.h"
+#include "verifyexecutiontime.h"
 
 #include <stdio.h>
 #include <exception>
@@ -34,8 +35,9 @@ int UnitTest::
         RUNTEST(Backtrace);
         RUNTEST(ExceptionAssert);
         RUNTEST(PrettifySegfault);
-        RUNTEST(VolatilePtrTest);
         RUNTEST(Timer);
+        RUNTEST(VolatilePtrTest);
+        RUNTEST(VerifyExecutionTime);
     } catch (const exception& x) {
         TaskInfo(boost::format("%s") % boost::diagnostic_information(x));
         printf("\n FAILED in %s::test()\n\n", lastname.c_str ());

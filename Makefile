@@ -36,6 +36,7 @@ OBJECTS       = \
 		tasktimer.o \
 		timer.o \
 		unittest.o \
+		verifyexecutiontime.o \
 		volatileptr.o \
 
 all: $(TARGET)
@@ -45,4 +46,4 @@ clean:
 
 $(TARGET): Makefile $(OBJECTS)
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(LIBS)
-	$(TARGET)
+	$(TARGET) || true

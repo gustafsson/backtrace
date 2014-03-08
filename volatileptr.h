@@ -2,6 +2,7 @@
 #define VOLATILELOCK_H
 
 #include "unused.h"
+#include "verifyexecutiontime.h"
 
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/shared_ptr.hpp>
@@ -38,58 +39,114 @@ public:
 #ifdef _DEBUG
 // disable timeouts during debug sessions
 //#define VolatilePtr_lock_timeout_ms -1
-#define VolatilePtr_lock_timeout_ms 1000
+#define VolatilePtr_lock_timeout_ms 100
 #else
-#define VolatilePtr_lock_timeout_ms 1000
+#define VolatilePtr_lock_timeout_ms 100
 #endif
 
 /**
  * The VolatilePtr class should guarantee thread-safe access to objects, with
- * compile-time errors on missing locks and run-time exceptions with backtraces
- * on deadlocks.
+ *  - compile-time errors on missing locks
+ *  - run-time exceptions with backtraces on deadlocks and failed locks
+ *  - run-time warnings on locks that are likely to cause other lock attempts to fail.
  *
- * For examples of usage see
- * VolatilePtrTest::test ()
+ * Quick cheat sheet:
+ *    class A: public VolatilePtr<A> {
+ *    public:
+ *       void foo();
+ *       void bar() const;
+ *    };
+ *
+ *    A::Ptr a( new A); // Smart pointer safe to use in multiple threads
+ *    a->foo();         // un-safe method call fails in compile time
+ *    write1(a)->foo(); // Mutally exclusive write access
+ *    read1(a)->bar();  // Simultaneous read-only access to const methods
+ *
+ *    try {
+ *       WritePtr(a, T)->foo();
+ *    } catch(LockFailed) {
+ *       // Catch if a lock couldn't be obtained within T milliseconds.
+ *       // Default timeout is VolatilePtr_lock_timeout_ms.
+ *       // A negative timeout means wait indefinitely.
+ *    }
+ *
+ *    A::WritePtr w(a, NoLockFailed());
+ *    if (w) w->foo();  // Only lock for access if readily availaible (i.e
+ *                      // currently not locked by any other thread)
+ *
+ * For more complete examples see:
+ *    VolatilePtrTest::test ()
  *
  * To use VolatilePtr to manage thread-safe access to some previously
  * un-protected data you first need to create a new class representing the
  * state which needs to be managed. If this is just a single existing class
- * you can either 1) change the existing class to make it inherit
- * VolatilePtr<ClassType>, or 2) create a wrapper class.
+ * you can either
+ *  1) change the existing class to make it inherit VolatilePtr<ClassType>,
+ *  2) create a wrapper class.
  *
  * The idea is to use a pointer to a volatile object when juggling references to
  * objects. From a volatile object you can only access methods that are volatile
  * (just like only const methods are accessible from a const object). Using the
- * volatile classifier blocks access to use any "regular" (non-volatile) methods.
+ * volatile classifier prevents access to use any "regular" (non-volatile) methods.
  *
  * The helper classes ReadPtr and WritePtr uses RAII for thread-safe and
  * exception-safe access to a non-volatile reference to the object.
  *
- * Some examples might make more sense than this description;
- * see VolatilePtrTest::test ()
  *
- * VolatilePtr should cause a low overhead.
- * The time overhead of locking an available object was about 800e-9 s on the
- * machine this was developed.
+ * VolatilePtr should cause an overhead of less than 0.1 microseconds in a
+ * 'release' build when using 'NoLockFailed'.
  *
- * 'NoLockFailed' should be fast.
- * If you only want the lock if its readily available lock with
- * 'A::WritePtr(a,NoLockFailed())'
- * Don't use a timeout_ms=0 as that will instead throw an exception
- * on a timeout, and the backtrace embedded in the exception can take
- * up to 1 ms to be created.
+ * VolatilePtr should cause an overhead of less than 0.3 microseconds in a
+ * 'release' build when 'verify_execution_time_ms < 0'.
  *
- * Author: johan.gustafsson@muchdifferent.com
+ * VolatilePtr should cause an overhead of less than 1.5 microseconds in a
+ * 'release' build when 'verify_execution_time_ms >= 0'.
+ *
+ * See VolatilePtr::ReadPtr for details on the arguments to the accessors.
+ *
+ * Author: johan.b.gustafsson@gmail.com
+ *
+ * TODO VolatilePtr shouldn't require modification of the class T.
  */
 template<typename T>
 class VolatilePtr
 {
 protected:
 
-    // Need to be instantiated as a subclass.
-    VolatilePtr ()
+    /**
+     * VolatilePtr needs to be instantiated as a subclass.
+     *
+     * If 'timeout_ms >= 0' ReadPtr/WritePtr will try to look until the timeout
+     * has passed and then throw a LockFailed exception. If 'timeout_ms < 0'
+     * they will block indefinitely until the lock becomes available.
+     *
+     * If 'verify_execution_time_ms >= 0' ReadPtr/WritePTr will call
+     * report_func if the lock is kept longer than this value. With the default
+     * behaviour of VerifyExecutionTime if report_func = 0.
+     */
+    VolatilePtr (int timeout_ms = VolatilePtr_lock_timeout_ms,
+                 int verify_execution_time_ms = VolatilePtr_lock_timeout_ms/2,
+                 VerifyExecutionTime::report report_func = 0)
+        :
+          timeout_ms_(timeout_ms),
+          verify_execution_time_ms_(verify_execution_time_ms),
+          report_func_(report_func)
     {}
 
+
+    /**
+     * Call setTimeOuts during construction only, it is undefined behaviour to
+     * change timeout_ms_ later as it needs to be accessed before locking the
+     * mutex.
+     *
+     * Ideally the constructor arguments would be enough, but that would be too
+     * impractical.
+     */
+    void setTimeOuts (int timeout_ms, int verify_execution_time_ms, VerifyExecutionTime::report report_func=0) {
+        *const_cast<int*>(&timeout_ms_) = timeout_ms;
+        verify_execution_time_ms_ = verify_execution_time_ms;
+        report_func_ = report_func;
+    }
 
 public:
 
@@ -109,7 +166,6 @@ public:
         UNUSED(VolatilePtr* p) = (T*)0; // T is required to be a subtype of VolatilePtr<T>
     }
 
-
     /**
      * For examples of usage see void VolatilePtrTest::test ().
      *
@@ -118,9 +174,8 @@ public:
      * may be shared by multiple threads that simultaneously use their own
      * ReadPtr to access the same object.
      *
-     * The accessors always returns an accessible instance, never null. For
-     * this purpose neither ReadPtr nor WritePtr provides any exstensive
-     * interfaces to for instance perform unlock and relock.
+     * The accessors without NoLockFailed always returns an accessible
+     * instance, never null. If a lock fails a LockFailed exception is thrown.
      *
      * @see void VolatilePtrTest::test ()
      * @see class VolatilePtr
@@ -128,35 +183,35 @@ public:
      */
     class ReadPtr {
     public:
-        explicit ReadPtr (const Ptr& p, int timeout_ms=VolatilePtr_lock_timeout_ms)
+        explicit ReadPtr (const Ptr& p)
             :   l_ (p->readWriteLock()),
                 p_ (p),
                 t_ (const_cast<const T*> (p.get ()))
         {
-            lock(timeout_ms);
+            lock ();
         }
 
-        explicit ReadPtr (const volatile Ptr& p, int timeout_ms=VolatilePtr_lock_timeout_ms)
+        explicit ReadPtr (const volatile Ptr& p)
             :   l_ ((*const_cast<const Ptr*> (&p))->readWriteLock()),
                 p_ (*const_cast<const Ptr*> (&p)),
                 t_ (const_cast<const T*> (const_cast<const Ptr*> (&p)->get ()))
         {
-            lock(timeout_ms);
+            lock ();
         }
 
-        explicit ReadPtr (const volatile ConstPtr& p, int timeout_ms=VolatilePtr_lock_timeout_ms)
+        explicit ReadPtr (const volatile ConstPtr& p)
             :   l_ ((*const_cast<const ConstPtr*> (&p))->readWriteLock()),
                 p_ (*const_cast<const ConstPtr*> (&p)),
                 t_ (const_cast<const T*> (const_cast<const ConstPtr*> (&p)->get ()))
         {
-            lock(timeout_ms);
+            lock ();
         }
 
-        explicit ReadPtr (const volatile T* p, int timeout_ms=VolatilePtr_lock_timeout_ms)
+        explicit ReadPtr (const volatile T* p)
             :   l_ (p->readWriteLock()),
                 t_ (const_cast<const T*> (p))
         {
-            lock(timeout_ms);
+            lock ();
         }
 
         /**
@@ -202,14 +257,23 @@ public:
 
         ~ReadPtr() {
             // The destructor isn't called if the constructor throws.
-            if (t_)
-                l_->unlock_shared ();
+            unlock ();
         }
 
         const T* operator-> () const { return t_; }
         const T& operator* () const { return *t_; }
         const T* get () const { return t_; }
         ConstPtr getPtr () const { return p_; }
+
+        void unlock() {
+            if (t_)
+            {
+                l_->unlock_shared ();
+                pc_.reset ();
+            }
+
+            t_ = 0;
+        }
 
     private:
         // This constructor is not implemented as it's an error to pass a
@@ -218,7 +282,9 @@ public:
         ReadPtr(T*);
         ReadPtr(const T*);
 
-        void lock(int timeout_ms) {
+        void lock() {
+            int timeout_ms = t_->timeout_ms_; // t_ is not locked, but timeout_ms_ is const
+
             // try_lock_shared_for and lock_shared are unnecessarily complex if
             // the lock is available right away
             if (l_->try_lock_shared ())
@@ -228,6 +294,7 @@ public:
             else if (timeout_ms < 0)
             {
                 l_->lock_shared ();
+                // Got lock
             }
             else if (l_->try_lock_shared_for (boost::chrono::milliseconds(timeout_ms)))
             {
@@ -245,11 +312,15 @@ public:
                                       << typename LockFailed::timeout_value(timeout_ms)
                                       << typename LockFailed::try_again_value(try_again));
             }
+
+            if (0<t_->verify_execution_time_ms_)
+                pc_ = VerifyExecutionTime::start (t_->verify_execution_time_ms_*1e-3f, t_->report_func_);
         }
 
         shared_mutex* l_;
         const ConstPtr p_;
         const T* t_;
+        VerifyExecutionTime::Ptr pc_;
     };
 
 
@@ -265,27 +336,27 @@ public:
      */
     class WritePtr {
     public:
-        explicit WritePtr (const Ptr& p, int timeout_ms=VolatilePtr_lock_timeout_ms)
+        explicit WritePtr (const Ptr& p)
             :   l_ (p->readWriteLock()),
                 p_ (p),
                 t_ (const_cast<T*> (p.get ()))
         {
-            lock(timeout_ms);
+            lock ();
         }
 
-        explicit WritePtr (const volatile Ptr& p, int timeout_ms=VolatilePtr_lock_timeout_ms)
+        explicit WritePtr (const volatile Ptr& p)
             :   l_ ((*const_cast<const Ptr*> (&p))->readWriteLock()),
                 p_ (*const_cast<const Ptr*> (&p)),
                 t_ (const_cast<T*> (const_cast<const Ptr*> (&p)->get ()))
         {
-            lock(timeout_ms);
+            lock ();
         }
 
-        explicit WritePtr (volatile T* p, int timeout_ms=VolatilePtr_lock_timeout_ms)
+        explicit WritePtr (volatile T* p)
             :   l_ (p->readWriteLock()),
                 t_ (const_cast<T*> (p))
         {
-            lock(timeout_ms);
+            lock ();
         }
 
         // See ReadPtr(const volatile ReadPtr&, NoLockFailed)
@@ -312,8 +383,7 @@ public:
         WritePtr& operator=(WritePtr const&) = delete;
 
         ~WritePtr() {
-            if (t_)
-                l_->unlock ();
+            unlock ();
         }
 
         T* operator-> () const { return t_; }
@@ -321,12 +391,24 @@ public:
         T* get () const { return t_; }
         Ptr getPtr () const { return p_; }
 
+        void unlock() {
+            if (t_)
+            {
+                l_->unlock ();
+                pc_.reset ();
+            }
+
+            t_ = 0;
+        }
+
     private:
         // See ReadPtr(const T*)
         WritePtr (T* p);
 
         // See ReadPtr::lock
-        void lock(int timeout_ms) {
+        void lock() {
+            int timeout_ms = t_->timeout_ms_; // t_ is not locked, but timeout_ms_ is const
+
             if (l_->try_lock())
             {
             }
@@ -347,11 +429,15 @@ public:
                                       << typename LockFailed::timeout_value(timeout_ms)
                                       << typename LockFailed::try_again_value(try_again));
             }
+
+            if (0<t_->verify_execution_time_ms_)
+                pc_ = VerifyExecutionTime::start (t_->verify_execution_time_ms_*1e-3f, t_->report_func_);
         }
 
         shared_mutex* l_;
         const Ptr p_;
         T* t_;
+        VerifyExecutionTime::Ptr pc_;
     };
 
 
@@ -379,6 +465,9 @@ private:
      * void VolatilePtrTest::test ();
      */
     mutable shared_mutex lock_;
+    const int timeout_ms_;
+    int verify_execution_time_ms_;
+    VerifyExecutionTime::report report_func_;
 };
 
 
