@@ -1,0 +1,41 @@
+shared_state It should detect deadlocks from recursive locks
+0.1
+
+shared_state can't lock for read twice if another thread request a write in the middle
+0.03
+
+shared_state a.readWriteLock ().try_lock ();
+0.0002
+
+shared_state a.readWriteLock ().try_lock_for
+0.002
+
+shared_state try { with_0timeout_without_verify::write_ptr w(a); }
+0.02
+
+shared_state LockFailed, with_0timeout_without_verify::write_ptr w(a)
+0.02
+
+shared_state with_0timeout_without_verify::write_ptr(a,NoLockFailed())
+0.0002
+
+shared_state with_0timeout_without_verify::read_ptr(a,NoLockFailed())
+0.0002
+
+shared_state with_0timeout_without_verify::read_ptr(consta,NoLockFailed())
+0.0002
+
+shared_state a->noinlinecall ()
+0.00008
+
+shared_state A::write_ptr(a2)->noinlinecall()
+0.03
+
+shared_state A::read_ptr(a2)->noinlinecall()
+0.03
+
+shared_state with_1timeout_and_1000verify::write_ptr w(a2)
+0.2
+
+shared_state with_1timeout_and_1000verify::read_ptr
+0.2

@@ -6,3 +6,5 @@ x64
 *.suo
 *.vcxproj.user
 *.vcxproj.filters
+.depend
+trace_perf/dump

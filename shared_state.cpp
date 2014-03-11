@@ -1,9 +1,7 @@
 #include "shared_state.h"
 #include "exceptionassert.h"
 #include "expectexception.h"
-
-#include "timer.h"
-#include "detectgdb.h"
+#include "trace_perf.h"
 
 #include <boost/thread/thread.hpp>
 #include <boost/bind.hpp>
@@ -380,179 +378,84 @@ void shared_state_test::
 
     // shared_state should cause an overhead of less than 0.1 microseconds in a
     // 'release' build when using 'NoLockFailed'.
-    {
-        with_0timeout_without_verify::Ptr a(new with_0timeout_without_verify);
-        with_0timeout_without_verify::ConstPtr consta(a);
-
-        with_0timeout_without_verify::write_ptr r(a);
-        double T;
-
-        bool debug = false;
-    #ifdef _DEBUG
-        debug = true;
-    #endif
-        bool gdb = DetectGdb::is_running_through_gdb();
-
-        Timer timer;
-        for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::write_ptr(a,NoLockFailed());
-        }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 2000e-9 : 220e-9 : 120e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
-
-        for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::read_ptr(a,NoLockFailed());
-        }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 200e-9 : 100e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
-
-        for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::read_ptr(consta,NoLockFailed());
-        }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 260e-9 : 100e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
-    }
-
+    //
     // shared_state should fail fast when using 'NoLockFailed', within 0.1
     // microseconds in a 'release' build.
     {
         with_0timeout_without_verify::Ptr a(new with_0timeout_without_verify);
         with_0timeout_without_verify::ConstPtr consta(a);
-
         with_0timeout_without_verify::write_ptr r(a);
-        double T;
 
-        bool debug = false;
-    #ifdef _DEBUG
-        debug = true;
-    #endif
-        bool gdb = DetectGdb::is_running_through_gdb();
-
-        Timer timer;
+        TRACE_PERF("shared_state a.readWriteLock ().try_lock ();");
         for (int i=0; i<1000; i++) {
             a.readWriteLock ().try_lock ();
         }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 10000e-9 : 210e-9 : 300e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 20e-9 : 20e-9, T);
 
+        trace_perf_.reset("shared_state a.readWriteLock ().try_lock_for");
         for (int i=0; i<1000; i++) {
             a.readWriteLock ().try_lock_for(boost::chrono::milliseconds(0));
         }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? 8000e-9 : 4000e-9);
-        EXCEPTION_ASSERT_LESS(300e-9, T);
 
+        trace_perf_.reset("shared_state try { with_0timeout_without_verify::write_ptr w(a); }");
         for (int i=0; i<1000; i++) {
             try { with_0timeout_without_verify::write_ptr w(a); } catch (const LockFailed&) {}
         }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? 80000e-9 : 30000e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 12000e-9 : 6000e-9, T);
 
+        trace_perf_.reset("shared_state LockFailed, with_0timeout_without_verify::write_ptr w(a)");
         for (int i=0; i<1000; i++) {
             EXPECT_EXCEPTION(LockFailed, with_0timeout_without_verify::write_ptr w(a));
         }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 40000e-9 : 25000e-9 : 28000e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 10000e-9 : 6000e-9, T);
 
+        trace_perf_.reset("shared_state with_0timeout_without_verify::write_ptr(a,NoLockFailed())");
         for (int i=0; i<1000; i++) {
             with_0timeout_without_verify::write_ptr(a,NoLockFailed());
         }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 2000e-9 : 220e-9 : 120e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
 
+        trace_perf_.reset("shared_state with_0timeout_without_verify::read_ptr(a,NoLockFailed())");
         for (int i=0; i<1000; i++) {
             with_0timeout_without_verify::read_ptr(a,NoLockFailed());
         }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 200e-9 : 100e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
 
+        trace_perf_.reset("shared_state with_0timeout_without_verify::read_ptr(consta,NoLockFailed())");
         for (int i=0; i<1000; i++) {
             with_0timeout_without_verify::read_ptr(consta,NoLockFailed());
         }
-        T = timer.elapsedAndRestart ()/1000;
-        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 260e-9 : 100e-9);
-        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
     }
 
     // shared_state should cause an overhead of less than 0.3 microseconds in a
     // 'release' build when 'verify_execution_time_ms < 0'.
     {
-        bool debug = false;
-    #ifdef _DEBUG
-        debug = true;
-    #endif
-
         int N = 100000;
 
         boost::shared_ptr<A> a(new A);
-        Timer timer;
+        TRACE_PERF("shared_state a->noinlinecall ()");
         for (int i=0; i<N; i++)
             a->noinlinecall ();
-        float T = timer.elapsed ()/N;
 
         A::Ptr a2(new A);
-        Timer timer2;
+        trace_perf_.reset("shared_state A::write_ptr(a2)->noinlinecall()");
         for (int i=0; i<N; i++)
             A::write_ptr(a2)->noinlinecall();
-        float T2 = timer2.elapsed ()/N;
 
-        Timer timer3;
+        trace_perf_.reset("shared_state A::read_ptr(a2)->noinlinecall()");
         for (int i=0; i<N; i++)
             A::read_ptr(a2)->noinlinecall();
-        float T3 = timer3.elapsed ()/N;
-
-        EXCEPTION_ASSERT_LESS(T, debug ? 150e-9 : 2e-9);
-#ifdef __GCC__
-        EXCEPTION_ASSERT_LESS(T2-T, 110e-9);
-        EXCEPTION_ASSERT_LESS(T3-T, 110e-9);
-#else
-        EXCEPTION_ASSERT_LESS(T2-T, debug ? 500e-9 : 270e-9);
-        EXCEPTION_ASSERT_LESS(T3-T, debug ? 500e-9 : 270e-9);
-#endif
     }
 
     // shared_state should cause an overhead of less than 1.5 microseconds in a
     // 'release' build when 'verify_execution_time_ms >= 0'.
     {
-        bool debug = false;
-    #ifdef _DEBUG
-        debug = true;
-    #endif
-
         int N = 100000;
         boost::shared_ptr<A> a(new A);
-        Timer timer;
-        for (int i=0; i<N; i++)
-            a->noinlinecall ();
-        float T = timer.elapsed ()/N;
 
         with_1timeout_and_1000verify::Ptr a2(new with_1timeout_and_1000verify);
-        Timer timer2;
+        TRACE_PERF("shared_state with_1timeout_and_1000verify::write_ptr w(a2)");
         for (int i=0; i<N; i++)
             with_1timeout_and_1000verify::write_ptr w(a2);
-        float T2 = timer2.elapsed ()/N;
 
-        Timer timer3;
+        trace_perf_.reset("shared_state with_1timeout_and_1000verify::read_ptr");
         for (int i=0; i<N; i++)
             with_1timeout_and_1000verify::read_ptr r(a2);
-        float T3 = timer3.elapsed ()/N;
-
-        EXCEPTION_ASSERT_LESS(T, debug ? 120e-9 : 2e-9);
-#ifdef __GCC__
-        EXCEPTION_ASSERT_LESS(T2-T, 110e-9);
-        EXCEPTION_ASSERT_LESS(T3-T, 110e-9);
-#else
-        EXCEPTION_ASSERT_LESS(T2-T, debug ? 5000e-9 : 1500e-9);
-        EXCEPTION_ASSERT_LESS(T3-T, debug ? 5000e-9 : 1500e-9);
-#endif
     }
 
     // More thoughts on design decisions
@@ -580,7 +483,6 @@ A& A::
     return *this;
 }
 
-#include "tasktimer.h"
 
 void A::
         test () volatile
@@ -689,7 +591,7 @@ void WriteWhileReadingThread::
 {
     // It should detect deadlocks from recursive locks
     {
-        Timer timer;
+        TRACE_PERF("shared_state It should detect deadlocks from recursive locks");
         B::Ptr b(new B);
 
         // can't lock for write twice (recursive locks)
@@ -699,9 +601,7 @@ void WriteWhileReadingThread::
         // can lock for read twice if no other thread locks for write in-between
         readTwice(b);
 
-        float T = timer.elapsedAndRestart ();
-        EXCEPTION_ASSERT_LESS(40e-3, T); // B timeout is 10 ms, try_again adds *2, two attempts adds *2
-        EXCEPTION_ASSERT_LESS(T, 100e-3);
+        trace_perf_.reset("shared_state can't lock for read twice if another thread request a write in the middle");
 
         // can't lock for read twice if another thread request a write in the middle
         // that write request will fail but try_again will make this thread throw the error as well
@@ -709,10 +609,6 @@ void WriteWhileReadingThread::
         boost::thread t = boost::thread(wb);
         EXPECT_EXCEPTION(LockFailed, readTwice(b));
         t.join ();
-
-        T = timer.elapsed ();
-        EXCEPTION_ASSERT_LESS(20e-3, T); // B timeout is 10 ms, try_again adds *2
-        EXCEPTION_ASSERT_LESS(T, 110e-3);
     }
 
     // It should produce run-time exceptions with backtraces on deadlocks
