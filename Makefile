@@ -20,7 +20,7 @@ DEBUG_RELEASE = -O3
 INCPATH       = -I/opt/local/include
 CXXFLAGS      = -std=c++11 -Wall -g $(BACKTRACE_CXXFLAGS) $(DEBUG_RELEASE) $(INCPATH)
 LFLAGS        = $(BACKTRACE_LFLAGS)
-LIBS          = -L/opt/local/lib -lboost_chrono-mt -lboost_system-mt -lboost_thread-mt
+LIBS          = -L/opt/local/lib -lboost_chrono-mt -lboost_system-mt -lboost_thread-mt -lboost_filesystem-mt
 
 
 TARGET        = ./backtrace-unittest
@@ -35,6 +35,7 @@ OBJECTS       = \
 		signalname.o \
 		tasktimer.o \
 		timer.o \
+		trace_perf.o \
 		unittest.o \
 		verifyexecutiontime.o \
 		shared_state.o \
@@ -44,6 +45,11 @@ all: $(TARGET)
 clean:
 	rm -f $(OBJECTS) $(TARGET)
 
-$(TARGET): Makefile $(OBJECTS)
+.depend: *.cpp *.h
+	mkdep $(CXXFLAGS) *.cpp
+
+$(TARGET): Makefile $(OBJECTS) .depend
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(LIBS)
 	$(TARGET) || true
+
+include .depend
