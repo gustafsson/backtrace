@@ -3,7 +3,7 @@
 #include "backtrace.h"
 #include "exceptionassert.h"
 #include "prettifysegfault.h"
-#include "volatileptr.h"
+#include "shared_state.h"
 #include "tasktimer.h"
 #include "timer.h"
 #include "verifyexecutiontime.h"
@@ -36,7 +36,7 @@ int UnitTest::
         RUNTEST(ExceptionAssert);
         RUNTEST(PrettifySegfault);
         RUNTEST(Timer);
-        RUNTEST(VolatilePtrTest);
+        RUNTEST(shared_state_test);
         RUNTEST(VerifyExecutionTime);
     } catch (const exception& x) {
         TaskInfo(boost::format("%s") % boost::diagnostic_information(x));

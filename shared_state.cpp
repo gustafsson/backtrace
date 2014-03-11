@@ -1,4 +1,4 @@
-#include "volatileptr.h"
+#include "shared_state.h"
 #include "exceptionassert.h"
 #include "expectexception.h"
 
@@ -50,10 +50,10 @@ private:
 class A
 {
 public:
-    typedef VolatilePtr<A> Ptr;
-    typedef VolatilePtr<const A> ConstPtr;
-    typedef Ptr::ReadPtr ReadPtr;
-    typedef Ptr::WritePtr WritePtr;
+    typedef shared_state<A> Ptr;
+    typedef shared_state<const A> ConstPtr;
+    typedef Ptr::read_ptr read_ptr;
+    typedef Ptr::write_ptr write_ptr;
 
     A () {}
     A (const A& b) { *this = b; }
@@ -77,7 +77,7 @@ private:
 
 
 template<>
-class VolatilePtrTypeTraits<A> {
+class shared_state_traits<A> {
 public:
     int timeout_ms() { return 1; }
     int verify_execution_time_ms() { return -1; }
@@ -88,16 +88,16 @@ public:
 class B
 {
 public:
-    class VolatilePtrTypeTraits {
+    class shared_state_traits {
     public:
         int timeout_ms() { return 10; }
         int verify_execution_time_ms() { return -1; }
         VerifyExecutionTime::report report_func() { return 0; }
     };
 
-    typedef VolatilePtr<B> Ptr;
-    typedef Ptr::ReadPtr ReadPtr;
-    typedef Ptr::WritePtr WritePtr;
+    typedef shared_state<B> Ptr;
+    typedef Ptr::read_ptr read_ptr;
+    typedef Ptr::write_ptr write_ptr;
 
     int work_a_lot(int i) const;
 };
@@ -106,15 +106,15 @@ public:
 class with_0timeout_without_verify
 {
 public:
-    typedef VolatilePtr<with_0timeout_without_verify> Ptr;
-    typedef VolatilePtr<const with_0timeout_without_verify> ConstPtr;
-    typedef Ptr::ReadPtr ReadPtr;
-    typedef Ptr::WritePtr WritePtr;
+    typedef shared_state<with_0timeout_without_verify> Ptr;
+    typedef shared_state<const with_0timeout_without_verify> ConstPtr;
+    typedef Ptr::read_ptr read_ptr;
+    typedef Ptr::write_ptr write_ptr;
 };
 
 
 template<>
-class VolatilePtrTypeTraits<with_0timeout_without_verify> {
+class shared_state_traits<with_0timeout_without_verify> {
 public:
     int timeout_ms() { return 0; }
     int verify_execution_time_ms() { return -1; }
@@ -125,15 +125,15 @@ public:
 class with_1timeout_and_1000verify
 {
 public:
-    typedef VolatilePtr<with_1timeout_and_1000verify> Ptr;
-    typedef VolatilePtr<const with_1timeout_and_1000verify> ConstPtr;
-    typedef Ptr::ReadPtr ReadPtr;
-    typedef Ptr::WritePtr WritePtr;
+    typedef shared_state<with_1timeout_and_1000verify> Ptr;
+    typedef shared_state<const with_1timeout_and_1000verify> ConstPtr;
+    typedef Ptr::read_ptr read_ptr;
+    typedef Ptr::write_ptr write_ptr;
 };
 
 
 template<>
-class VolatilePtrTypeTraits<with_1timeout_and_1000verify> {
+class shared_state_traits<with_1timeout_and_1000verify> {
 public:
     int timeout_ms() { return 1; }
     int verify_execution_time_ms() { return 1000; }
@@ -144,15 +144,15 @@ public:
 class with_2timeout_without_verify
 {
 public:
-    typedef VolatilePtr<with_2timeout_without_verify> Ptr;
-    typedef VolatilePtr<const with_2timeout_without_verify> ConstPtr;
-    typedef Ptr::ReadPtr ReadPtr;
-    typedef Ptr::WritePtr WritePtr;
+    typedef shared_state<with_2timeout_without_verify> Ptr;
+    typedef shared_state<const with_2timeout_without_verify> ConstPtr;
+    typedef Ptr::read_ptr read_ptr;
+    typedef Ptr::write_ptr write_ptr;
 };
 
 
 template<>
-class VolatilePtrTypeTraits<with_2timeout_without_verify> {
+class shared_state_traits<with_2timeout_without_verify> {
 public:
     int timeout_ms() { return 2; }
     int verify_execution_time_ms() { return -1; }
@@ -163,15 +163,15 @@ public:
 class with_1timeout_and_1verify
 {
 public:
-    typedef VolatilePtr<with_1timeout_and_1verify> Ptr;
-    typedef VolatilePtr<const with_1timeout_and_1verify> ConstPtr;
-    typedef Ptr::ReadPtr ReadPtr;
-    typedef Ptr::WritePtr WritePtr;
+    typedef shared_state<with_1timeout_and_1verify> Ptr;
+    typedef shared_state<const with_1timeout_and_1verify> ConstPtr;
+    typedef Ptr::read_ptr read_ptr;
+    typedef Ptr::write_ptr write_ptr;
 };
 
 
 template<>
-class VolatilePtrTypeTraits<with_1timeout_and_1verify> {
+class shared_state_traits<with_1timeout_and_1verify> {
 public:
     int timeout_ms() { return 1; }
     int verify_execution_time_ms() { return 1; }
@@ -196,7 +196,7 @@ public:
 
 //static char (&test(...))[2];
 
-void VolatilePtrTest::
+void shared_state_test::
         test ()
 {
     // It should guarantee compile-time thread safe access to objects.
@@ -212,7 +212,7 @@ void VolatilePtrTest::
 
     {
         // Lock for write access
-        A::WritePtr w (mya);
+        A::write_ptr w (mya);
         w->a (5);
         A& b = *w;
         b.a (5);
@@ -220,17 +220,17 @@ void VolatilePtrTest::
     }
 
     // Lock for a single call
-    A::WritePtr (mya)->a (5);
+    A::write_ptr (mya)->a (5);
     write1(mya)->a (5);
 
     {
         // Lock for read access
-        A::ReadPtr r (mya);
+        A::read_ptr r (mya);
         EXCEPTION_ASSERT_EQUALS (r->a (), 5);
         const A& b = *r;
         EXCEPTION_ASSERT_EQUALS (b.a (), 5);
 
-        // can't write to mya with ReadPtr
+        // can't write to mya with read_ptr
         // error: passing 'const A' as 'this' argument of 'void A::a (int)' discards qualifiers
         // r->a (5);
 
@@ -238,7 +238,7 @@ void VolatilePtrTest::
     }
 
     // Lock for a single call
-    A::ReadPtr (mya)->a ();
+    A::read_ptr (mya)->a ();
     read1(mya)->a ();
 
     // Can call volatile methods
@@ -251,11 +251,11 @@ void VolatilePtrTest::
     consta->consttest ();
 
     // Can get read-only access from a ConstPtr.
-    A::ReadPtr (consta)->a ();
+    A::read_ptr (consta)->a ();
 
-    // Can not create a WritePtr to a const pointer.
-    // error: no matching function for call to 'VolatilePtr<A>::WritePtr::WritePtr (VolatilePtr<A>::ConstPtr)'
-    // A::WritePtr (consta)->a ();
+    // Can not create a write_ptr to a const pointer.
+    // error: no matching function for call to 'shared_state<A>::write_ptr::write_ptr (shared_state<A>::ConstPtr)'
+    // A::write_ptr (consta)->a ();
 
     {
         // Bad practice
@@ -265,7 +265,7 @@ void VolatilePtrTest::
         sum += read1 (mya)->a ();
         // A common assumption here would be that a () returns the same result
         // twice. But this is NOT guaranteed. Another thread might change 'mya'
-        // with a WritePtr between the two calls.
+        // with a write_ptr between the two calls.
         //
         // That is also how methods with synchronized behave in Java.
         //
@@ -274,7 +274,7 @@ void VolatilePtrTest::
 
     {
         // Good practice
-        A::ReadPtr r (mya); // Lock the data you need before you start using it.
+        A::read_ptr r (mya); // Lock the data you need before you start using it.
         int sum = 0;
         sum += r->a ();
         sum += r->a ();
@@ -283,7 +283,7 @@ void VolatilePtrTest::
     }
 
     // The differences in the bad and good practices illustrated above is
-    // especially important for WritePtr that might modify an object in
+    // especially important for write_ptr that might modify an object in
     // several steps where snapshots of intermediate steps would describe
     // inconsistent states. Using inconsistent states results in undefined
     // behaviour (i.e crashes, or worse).
@@ -294,8 +294,8 @@ void VolatilePtrTest::
         // Good practice for long reading routines
         // Limit the time you need the lock by copying the data to a local
         // instance before you start using it. This requires a user specified
-        // copy that ignores any values of VolatilePtr.
-        const A mylocal_a = *A::ReadPtr (mya);
+        // copy that ignores any values of shared_state.
+        const A mylocal_a = *A::read_ptr (mya);
         int sum = 0;
         sum += mylocal_a.a ();
         sum += mylocal_a.a ();
@@ -307,15 +307,15 @@ void VolatilePtrTest::
         // Good practice for long writing routines
         // Assuming you only have one producer of data (with one or multiple
         // consumers). This requires user specified assignment that ignores
-        // any values of VolatilePtr.
-        A mylocal_a = *A::ReadPtr (mya); // Produce a writable copy
+        // any values of shared_state.
+        A mylocal_a = *A::read_ptr (mya); // Produce a writable copy
         mylocal_a.a (5);
-        *A::WritePtr (mya) = mylocal_a;
+        *A::write_ptr (mya) = mylocal_a;
         // This will not be as easy with multiple producers as you need to
         // manage merging.
         //
         // The easiest solution for multiple producers is the version proposed
-        // in the beginning were the WritePtr is kept throughout the scope of
+        // in the beginning were the write_ptr is kept throughout the scope of
         // the work.
     }
 
@@ -323,19 +323,19 @@ void VolatilePtrTest::
     // An explanation of inline locks, or one-line locks, or locks for a single call.
     //
     // One-line locks are kept until the complete statement has been executed.
-    // The destructor of A::WritePtr releases the lock when the instance goes
-    // out-of-scope. Because the scope in which A::WritePtr is created is a
+    // The destructor of A::write_ptr releases the lock when the instance goes
+    // out-of-scope. Because the scope in which A::write_ptr is created is a
     // statement, the lock is released after the entire statement has finished
     // executing.
     //
     // So this example would create a deadlock.
-    // int deadlock = A::WritePtr (mya)->a () + A::WritePtr (mya)->a ();
+    // int deadlock = A::write_ptr (mya)->a () + A::write_ptr (mya)->a ();
     //
     // The following statement will ALSO create a deadlock if another thread
-    // requests an A::WritePtr after the first ReadPtr is obtained but before
-    // the second ReadPtr is obtained (because the first ReadPtr is not
+    // requests an A::write_ptr after the first read_ptr is obtained but before
+    // the second read_ptr is obtained (because the first read_ptr is not
     // released until the entire statement is finished):
-    // int deadlock = A::ReadPtr (mya)->a () + A::ReadPtr (mya)->a ();
+    // int deadlock = A::read_ptr (mya)->a () + A::read_ptr (mya)->a ();
     //
     // Rule of thumb; avoid locking more than one object at a time, and avoid
     // locking the same object more than once at a time.
@@ -344,24 +344,24 @@ void VolatilePtrTest::
     // It should be accessible from various pointer types
     {
         const A::Ptr mya1(new A);
-        {A::ReadPtr r(mya1);}
-        {A::WritePtr w(mya1);}
+        {A::read_ptr r(mya1);}
+        {A::write_ptr w(mya1);}
 
 //        const volatile A::Ptr mya2(new A);
-//        {A::ReadPtr r(mya2);}
-//        {A::WritePtr w(mya2);}
+//        {A::read_ptr r(mya2);}
+//        {A::write_ptr w(mya2);}
 
 //        const volatile A::ConstPtr mya3(new A);
-//        {A::ReadPtr r(mya3);}
+//        {A::read_ptr r(mya3);}
 
         A::ConstPtr mya4(new A);
-        {A::ReadPtr r(mya4);}
+        {A::read_ptr r(mya4);}
 
-        {A::ReadPtr r(A::Ptr(new A));}
-        {A::WritePtr w(A::Ptr(new A));}
+        {A::read_ptr r(A::Ptr(new A));}
+        {A::write_ptr w(A::Ptr(new A));}
     }
 
-    // VolatilePtr can be used in a map.
+    // shared_state can be used in a map.
     {
         std::map<A::Ptr, int> mymap;
         mymap.find (A::Ptr());
@@ -381,13 +381,13 @@ void VolatilePtrTest::
         EXCEPTION_ASSERT(!outer_destructor);
     }
 
-    // VolatilePtr should cause an overhead of less than 0.1 microseconds in a
+    // shared_state should cause an overhead of less than 0.1 microseconds in a
     // 'release' build when using 'NoLockFailed'.
     {
         with_0timeout_without_verify::Ptr a(new with_0timeout_without_verify);
         with_0timeout_without_verify::ConstPtr consta(a);
 
-        with_0timeout_without_verify::WritePtr r(a);
+        with_0timeout_without_verify::write_ptr r(a);
         double T;
 
         bool debug = false;
@@ -398,34 +398,34 @@ void VolatilePtrTest::
 
         Timer timer;
         for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::WritePtr(a,NoLockFailed());
+            with_0timeout_without_verify::write_ptr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 2000e-9 : 220e-9 : 120e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
 
         for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::ReadPtr(a,NoLockFailed());
+            with_0timeout_without_verify::read_ptr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 200e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
 
         for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::ReadPtr(consta,NoLockFailed());
+            with_0timeout_without_verify::read_ptr(consta,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 260e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
     }
 
-    // VolatilePtr should fail fast when using 'NoLockFailed', within 0.1
+    // shared_state should fail fast when using 'NoLockFailed', within 0.1
     // microseconds in a 'release' build.
     {
         with_0timeout_without_verify::Ptr a(new with_0timeout_without_verify);
         with_0timeout_without_verify::ConstPtr consta(a);
 
-        with_0timeout_without_verify::WritePtr r(a);
+        with_0timeout_without_verify::write_ptr r(a);
         double T;
 
         bool debug = false;
@@ -450,42 +450,42 @@ void VolatilePtrTest::
         EXCEPTION_ASSERT_LESS(300e-9, T);
 
         for (int i=0; i<1000; i++) {
-            try { with_0timeout_without_verify::WritePtr w(a); } catch (const LockFailed&) {}
+            try { with_0timeout_without_verify::write_ptr w(a); } catch (const LockFailed&) {}
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? 80000e-9 : 30000e-9);
         EXCEPTION_ASSERT_LESS(debug ? 12000e-9 : 6000e-9, T);
 
         for (int i=0; i<1000; i++) {
-            EXPECT_EXCEPTION(LockFailed, with_0timeout_without_verify::WritePtr w(a));
+            EXPECT_EXCEPTION(LockFailed, with_0timeout_without_verify::write_ptr w(a));
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 40000e-9 : 25000e-9 : 28000e-9);
         EXCEPTION_ASSERT_LESS(debug ? 10000e-9 : 6000e-9, T);
 
         for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::WritePtr(a,NoLockFailed());
+            with_0timeout_without_verify::write_ptr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 2000e-9 : 220e-9 : 120e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
 
         for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::ReadPtr(a,NoLockFailed());
+            with_0timeout_without_verify::read_ptr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 200e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
 
         for (int i=0; i<1000; i++) {
-            with_0timeout_without_verify::ReadPtr(consta,NoLockFailed());
+            with_0timeout_without_verify::read_ptr(consta,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 260e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
     }
 
-    // VolatilePtr should cause an overhead of less than 0.3 microseconds in a
+    // shared_state should cause an overhead of less than 0.3 microseconds in a
     // 'release' build when 'verify_execution_time_ms < 0'.
     {
         bool debug = false;
@@ -504,12 +504,12 @@ void VolatilePtrTest::
         A::Ptr a2(new A);
         Timer timer2;
         for (int i=0; i<N; i++)
-            A::WritePtr(a2)->noinlinecall();
+            A::write_ptr(a2)->noinlinecall();
         float T2 = timer2.elapsed ()/N;
 
         Timer timer3;
         for (int i=0; i<N; i++)
-            A::ReadPtr(a2)->noinlinecall();
+            A::read_ptr(a2)->noinlinecall();
         float T3 = timer3.elapsed ()/N;
 
         EXCEPTION_ASSERT_LESS(T, debug ? 150e-9 : 2e-9);
@@ -522,7 +522,7 @@ void VolatilePtrTest::
 #endif
     }
 
-    // VolatilePtr should cause an overhead of less than 1.5 microseconds in a
+    // shared_state should cause an overhead of less than 1.5 microseconds in a
     // 'release' build when 'verify_execution_time_ms >= 0'.
     {
         bool debug = false;
@@ -540,12 +540,12 @@ void VolatilePtrTest::
         with_1timeout_and_1000verify::Ptr a2(new with_1timeout_and_1000verify);
         Timer timer2;
         for (int i=0; i<N; i++)
-            with_1timeout_and_1000verify::WritePtr w(a2);
+            with_1timeout_and_1000verify::write_ptr w(a2);
         float T2 = timer2.elapsed ()/N;
 
         Timer timer3;
         for (int i=0; i<N; i++)
-            with_1timeout_and_1000verify::ReadPtr r(a2);
+            with_1timeout_and_1000verify::read_ptr r(a2);
         float T3 = timer3.elapsed ()/N;
 
         EXCEPTION_ASSERT_LESS(T, debug ? 120e-9 : 2e-9);
@@ -559,11 +559,11 @@ void VolatilePtrTest::
     }
 
     // More thoughts on design decisions
-    // VolatilePtr provides two short methods read1 and write1. They are a bit
+    // shared_state provides two short methods read1 and write1. They are a bit
     // controversial as they are likely to lead to inconsistent coding styles
     // when mixing the two versions.
     //  sum += read1 (mya)->a ()
-    //  sum += A::ReadPtr (mya)->a ()
+    //  sum += A::read_ptr (mya)->a ()
     // The latter is more explicit which in this case is good to emphasize that
     // a wrapper object is being constructed to manage access. It's also
     // generic enough to be used as the only way to lock an object.
@@ -636,16 +636,16 @@ void WriteWhileReadingThread::
     // Make sure readTwice starts before this function
     this_thread::sleep_for (chrono::milliseconds(1));
 
-    // Write access should fail as the first thread attempts a recursive ReadPtr.
-    EXPECT_EXCEPTION(LockFailed, B::WritePtr w(b); );
+    // Write access should fail as the first thread attempts a recursive read_ptr.
+    EXPECT_EXCEPTION(LockFailed, B::write_ptr w(b); );
 }
 
 
 void readTwice(B::Ptr b) {
     // int i = read1(b)->work_a_lot(1) + read1(b)->work_a_lot(2);
     // faster than default timeout
-    int i = B::ReadPtr(b)->work_a_lot(3)
-          + B::ReadPtr(b)->work_a_lot(4);
+    int i = B::read_ptr(b)->work_a_lot(3)
+          + B::read_ptr(b)->work_a_lot(4);
     (void) i;
 }
 
@@ -653,8 +653,8 @@ void readTwice(B::Ptr b) {
 void writeTwice(B::Ptr b) {
     // int i = write1(b)->work_a_lot(3) + write1(b)->work_a_lot(4);
     // faster than default timeout
-    int i = B::WritePtr(b)->work_a_lot(1)
-          + B::WritePtr(b)->work_a_lot(2);
+    int i = B::write_ptr(b)->work_a_lot(1)
+          + B::write_ptr(b)->work_a_lot(2);
     (void) i;
 }
 
@@ -668,9 +668,9 @@ public:
     void operator()() {
         try {
 
-            with_2timeout_without_verify::WritePtr aw(a);
+            with_2timeout_without_verify::write_ptr aw(a);
             this_thread::sleep_for (chrono::milliseconds(1));
-            with_2timeout_without_verify::WritePtr bw(b);
+            with_2timeout_without_verify::write_ptr bw(b);
 
         } catch (const with_2timeout_without_verify::Ptr::LockFailed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
@@ -727,9 +727,9 @@ void WriteWhileReadingThread::
 
         try {
 
-            with_2timeout_without_verify::WritePtr bw(b);
+            with_2timeout_without_verify::write_ptr bw(b);
             this_thread::sleep_for (chrono::milliseconds(1));
-            with_2timeout_without_verify::WritePtr aw(a);
+            with_2timeout_without_verify::write_ptr aw(a);
 
         } catch (const with_2timeout_without_verify::Ptr::LockFailed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
@@ -747,7 +747,7 @@ void WriteWhileReadingThread::
         bool did_report = false;
 
         VerifyExecutionTime::set_default_report ([&did_report](float, float){ did_report = true; });
-        with_1timeout_and_1verify::WritePtr w(a);
+        with_1timeout_and_1verify::write_ptr w(a);
         VerifyExecutionTime::set_default_report (0);
 
         this_thread::sleep_for (chrono::milliseconds(10));

@@ -37,7 +37,7 @@ OBJECTS       = \
 		timer.o \
 		unittest.o \
 		verifyexecutiontime.o \
-		volatileptr.o \
+		shared_state.o \
 
 all: $(TARGET)
 

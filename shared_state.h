@@ -1,24 +1,24 @@
 /**
- * The VolatilePtr class should guarantee thread-safe access to objects.
- * See details on the class VolatilePtr below.
+ * The shared_state class should guarantee thread-safe access to objects.
+ * See details on the class shared_state below.
  *
  * Author: johan.b.gustafsson@gmail.com
  */
 
-#ifndef VOLATILELOCK_H
-#define VOLATILELOCK_H
+#ifndef SHARED_STATE_H
+#define SHARED_STATE_H
 
 #include "verifyexecutiontime.h"
 
 #include <boost/thread/shared_mutex.hpp>
 #include <boost/exception/all.hpp>
 
-#ifndef VOLATILEPTR_THROW_EXCEPTION
-  #ifdef VOLATILEPTR_NO_BACKTRACE
-    #define VOLATILEPTR_THROW_EXCEPTION(x) BOOST_THROW_EXCEPTION(x)
+#ifndef SHARED_STATE_THROW_EXCEPTION
+  #ifdef SHARED_STATE_NO_BACKTRACE
+    #define SHARED_STATE_THROW_EXCEPTION(x) BOOST_THROW_EXCEPTION(x)
   #else
     #include "backtrace.h"
-    #define VOLATILEPTR_THROW_EXCEPTION(x) BOOST_THROW_EXCEPTION(x << Backtrace::make (2))
+    #define SHARED_STATE_THROW_EXCEPTION(x) BOOST_THROW_EXCEPTION(x << Backtrace::make (2))
   #endif
 #endif
 
@@ -28,7 +28,7 @@ public:
     typedef boost::error_info<struct timeout, int> timeout_value;
 
     /**
-     When a timeout occurs on a lock VolatilePtr makes an attempt to detect
+     When a timeout occurs on a lock shared_state makes an attempt to detect
      deadlocks. The thread with the timeout is blocked with another lock
      attempt long enough (same timeout as in the first attempt) for any other
      thread that is deadlocking with this thread to also fail its lock attempt.
@@ -42,27 +42,27 @@ public:
 
 #ifdef _DEBUG
 // disable timeouts during debug sessions
-//#define VolatilePtr_lock_timeout_ms -1
-#define VolatilePtr_lock_timeout_ms 100
+//#define shared_state_lock_timeout_ms -1
+#define shared_state_lock_timeout_ms 100
 #else
-#define VolatilePtr_lock_timeout_ms 100
+#define shared_state_lock_timeout_ms 100
 #endif
 
 
 template<class C>
-struct VolatilePtrTypeTraits {
-    int timeout_ms() { return VolatilePtr_lock_timeout_ms; }
-    int verify_execution_time_ms() { return VolatilePtr_lock_timeout_ms/2; }
+struct shared_state_traits {
+    int timeout_ms() { return shared_state_lock_timeout_ms; }
+    int verify_execution_time_ms() { return shared_state_lock_timeout_ms/2; }
     VerifyExecutionTime::report report_func() { return 0; }
 };
 
 template<typename T>
 struct has_volatile_ptr_traits
 {
-    // detect C::VolatilePtrTypeTraits::timeout_ms, assume
+    // detect C::shared_state_traits::timeout_ms, assume
     // verify_execution_time_ms and report_func are also present
     template<typename C>
-    static char test(decltype(&C::VolatilePtrTypeTraits::timeout_ms));
+    static char test(decltype(&C::shared_state_traits::timeout_ms));
 
     template<typename C> // worst match
     static char (&test(...))[2];
@@ -71,30 +71,30 @@ struct has_volatile_ptr_traits
 };
 
 template<class C, bool a = has_volatile_ptr_traits<C>::value>
-struct VolatilePtrTraitsType;
+struct shared_state_traits_helper;
 
 template<class C>
-struct VolatilePtrTraitsType<C,false> {
-    typedef VolatilePtrTypeTraits<C> type;
+struct shared_state_traits_helper<C,false> {
+    typedef shared_state_traits<C> type;
 };
 
 template<class C>
-struct VolatilePtrTraitsType<C,true> {
-    typedef typename C::VolatilePtrTypeTraits type;
+struct shared_state_traits_helper<C,true> {
+    typedef typename C::shared_state_traits type;
 };
 
-class VolatilePtrDetails {
-    template<typename Y> friend class VolatilePtr;
+class shared_state_details {
+    template<typename Y> friend class shared_state;
 
     template<typename Traits>
-    VolatilePtrDetails(Traits traits)
+    shared_state_details(Traits traits)
         : timeout_ms(traits.timeout_ms()),
           verify_execution_time_ms(traits.verify_execution_time_ms()),
           report_func(traits.report_func())
     {}
 
-    VolatilePtrDetails(VolatilePtrDetails const&) = delete;
-    VolatilePtrDetails& operator=(VolatilePtrDetails const&) = delete;
+    shared_state_details(shared_state_details const&) = delete;
+    shared_state_details& operator=(shared_state_details const&) = delete;
 
     mutable boost::shared_mutex lock;
     const int timeout_ms;
@@ -104,7 +104,7 @@ class VolatilePtrDetails {
 
 
 /**
- * The VolatilePtr class should guarantee thread-safe access to objects, with
+ * The shared_state class should guarantee thread-safe access to objects, with
  *  - compile-time errors on missing locks
  *  - run-time exceptions with backtraces on deadlocks and failed locks
  *  - run-time warnings on locks that are kept long enough to make it likely
@@ -117,79 +117,79 @@ class VolatilePtrDetails {
  *       void bar() const;
  *    };
  *
- *    VolatilePtr<A> a(new A); // Smart pointer that makes its data safe to use
+ *    shared_state<A> a(new A); // Smart pointer that makes its data safe to use
  *                             // in multiple threads.
  *    a->foo();  <-- error     // un-safe method call fails in compile time
  *    write1(a)->foo();        // Mutally exclusive write access
  *    read1(a)->bar();         // Simultaneous read-only access to const methods
  *
  *    try {
- *       WritePtr(a)->foo();
+ *       write_ptr(a)->foo();
  *    } catch(LockFailed) {
  *       // Catch if a lock couldn't be obtained within a given timeout.
- *       // The timeout is set when instanciating VolatilePtr<A>.
+ *       // The timeout is set when instanciating shared_state<A>.
  *    }
  *
- *    A::WritePtr w(a, NoLockFailed()); // Returns immediately without waiting.
+ *    A::write_ptr w(a, NoLockFailed()); // Returns immediately without waiting.
  *    if (w) w->foo();  // Only lock for access if readily availaible (i.e
  *                      // currently not locked by any other thread)
  *
  * For more complete examples see:
- *    VolatilePtrTest::test ()
+ *    shared_stateTest::test ()
  *
  *
- * To use VolatilePtr to ensure thread-safe access to some previously
+ * To use shared_state to ensure thread-safe access to some previously
  * un-protected data of class MyType, wrap all 'new MyType' calls as arguments
- * to the constructor of VolatilePtr<MyType>. Like in the example above for
+ * to the constructor of shared_state<MyType>. Like in the example above for
  * 'class A'.
  *
  * The idea is let the 'volatile' qualifier denote that an object can be
  * modified by any thread at any time and use a pointer to a volatile object
  * when juggling references to objects. When you need the data you access it
- * safely through VolatilePtr::ReadPtr and VolatilePtr::WritePtr.
+ * safely through shared_state::read_ptr and shared_state::write_ptr.
  *
  * From a volatile object you can only access methods that are volatile (just
  * like only const methods are accessible from a const object). Using the
  * volatile classifier prevents access to use any "regular" (non-volatile)
  * methods.
  *
- * The helper classes ReadPtr and WritePtr uses RAII provides both thread-safe
+ * The helper classes read_ptr and write_ptr uses RAII provides both thread-safe
  * and exception-safe access to a non-volatile reference to the object.
  *
  * Regarding "The volatile keyword in C++11 ISO Standard code is to be used
  * only for hardware access; do not use it for inter-thread communication."
- * VolatilePtr doesn't use the volatile qualifier for inter-thread
+ * shared_state doesn't use the volatile qualifier for inter-thread
  * communication but to ensure data isn't accessed without adequate locks. The
- * volatile qualifier is normally casted away in WritePtr/ReadPtr by the time
+ * volatile qualifier is normally casted away in write_ptr/read_ptr by the time
  * any data is dereferenced.
  *
  *
- * VolatilePtr should cause an overhead of less than 0.1 microseconds in a
+ * shared_state should cause an overhead of less than 0.1 microseconds in a
  * 'release' build when using 'NoLockFailed'.
  *
- * VolatilePtr should fail fast when using 'NoLockFailed', within 0.1
+ * shared_state should fail fast when using 'NoLockFailed', within 0.1
  * microseconds in a 'release' build.
  *
- * VolatilePtr should cause an overhead of less than 0.3 microseconds in a
+ * shared_state should cause an overhead of less than 0.3 microseconds in a
  * 'release' build when 'verify_execution_time_ms < 0'.
  *
- * VolatilePtr should cause an overhead of less than 1.5 microseconds in a
+ * shared_state should cause an overhead of less than 1.5 microseconds in a
  * 'release' build when 'verify_execution_time_ms >= 0'.
  *
  *
  * It is possible to use different timeouts, different expected execution times
  * and to disable the timeout and expected execution time. Create a template
- * specialization of VolatilePtrTypeTraits to override the defaults.
+ * specialization of shared_state_traits to override the defaults.
  *
  * TODO rename to shared_state or shared_mutable_state
  *
  * Author: johan.b.gustafsson@gmail.com
  */
 template<typename T>
-class VolatilePtr final
+class shared_state final
 {
 private:
-    typedef const VolatilePtrDetails details;
+    typedef const shared_state_details details;
 
 public:
     typedef T element_type;
@@ -197,14 +197,14 @@ public:
 
     class LockFailed: public ::LockFailed {};
 
-    VolatilePtr () {}
+    shared_state () {}
 
     /**
-     * If 'timeout_ms >= 0' ReadPtr/WritePtr will try to look until the timeout
+     * If 'timeout_ms >= 0' read_ptr/write_ptr will try to look until the timeout
      * has passed and then throw a LockFailed exception. If 'timeout_ms < 0'
      * they will block indefinitely until the lock becomes available.
      *
-     * If 'verify_execution_time_ms >= 0' ReadPtr/WritePTr will call
+     * If 'verify_execution_time_ms >= 0' read_ptr/WritePTr will call
      * report_func if the lock is kept longer than this value. With the default
      * behaviour of VerifyExecutionTime if report_func = 0.
      */
@@ -214,7 +214,7 @@ public:
                         std::is_convertible<Y*, element_type*>::value
                      >::type
             >
-    explicit VolatilePtr ( Y* p )
+    explicit shared_state ( Y* p )
     {
         reset(p);
     }
@@ -225,7 +225,7 @@ public:
                         std::is_convertible<Y*, element_type*>::value
                      >::type
             >
-    VolatilePtr(VolatilePtr<Y> a)
+    shared_state(const shared_state<Y>& a)
         :
             p( a.p ),
             d( a.d )
@@ -242,7 +242,7 @@ public:
         if (yp)
         {
             p.reset (yp);
-            d.reset (new details(typename VolatilePtrTraitsType< Y >::type()));
+            d.reset (new details(typename shared_state_traits_helper< Y >::type()));
         }
         else
         {
@@ -255,46 +255,68 @@ public:
     volatile T& operator* () const { return *p.get (); }
     volatile T* get () const { return p.get (); }
     explicit operator bool() const { return p.get (); }
-    bool operator== (const VolatilePtr& b) const { return p.get () == b.p.get (); }
-    bool operator!= (const VolatilePtr& b) const { return !(*this == b); }
-    bool operator < (const VolatilePtr& b) const { return this->p < b.p; }
+    bool operator== (const shared_state& b) const { return p.get () == b.p.get (); }
+    bool operator!= (const shared_state& b) const { return !(*this == b); }
+    bool operator < (const shared_state& b) const { return this->p < b.p; }
 
-    class WeakPtr {
+    class weak_ptr {
     public:
-        WeakPtr() {}
-        WeakPtr(const VolatilePtr& t) : data_(t.d), p_(t.p) {}
+        weak_ptr() {}
+        weak_ptr(const shared_state& t) : data(t.d), p(t.p) {}
 
-        VolatilePtr lock() const {
-            std::shared_ptr<details> datap = data_.lock ();
-            std::shared_ptr<volatile T> pp = p_.lock ();
+        shared_state lock() const {
+            std::shared_ptr<details> datap = data.lock ();
+            std::shared_ptr<volatile T> pp = p.lock ();
 
             if (pp && datap)
-                return VolatilePtr(pp, datap);
+                return shared_state(pp, datap);
 
-            return VolatilePtr(std::shared_ptr<volatile T>(), std::shared_ptr<details>());
+            return shared_state(std::shared_ptr<volatile T>(), std::shared_ptr<details>());
         }
 
     private:
-        std::weak_ptr<details> data_;
-        std::weak_ptr<volatile T> p_;
+        std::weak_ptr<details> data;
+        std::weak_ptr<volatile T> p;
     };
 
     /**
-     * For examples of usage see void VolatilePtrTest::test ().
+     * @brief The shared_mutable_state class provides direct access to the
+     * state. Consider using read_ptr or write_ptr instead.
+     */
+    class shared_mutable_state {
+    public:
+        shared_mutable_state() {}
+        shared_mutable_state(const shared_state& t)
+            :
+              p(t.p),
+              px(const_cast<const T*> (p.get ()))
+        {}
+
+        T* operator-> () const { return px; }
+        T& operator* () const { return *px; }
+        T* get () const { return px; }
+
+    private:
+        T* px;
+        std::shared_ptr<volatile T> p;
+    };
+
+    /**
+     * For examples of usage see void shared_stateTest::test ().
      *
-     * The purpose of ReadPtr is to provide thread-safe access to an a const
-     * object for a thread during the lifetime of the ReadPtr. This access
+     * The purpose of read_ptr is to provide thread-safe access to an a const
+     * object for a thread during the lifetime of the read_ptr. This access
      * may be shared by multiple threads that simultaneously use their own
-     * ReadPtr to access the same object.
+     * read_ptr to access the same object.
      *
      * The accessors without NoLockFailed always returns an accessible
      * instance, never null. If a lock fails a LockFailed exception is thrown.
      *
-     * @see void VolatilePtrTest::test ()
-     * @see class VolatilePtr
-     * @see class WritePtr
+     * @see void shared_stateTest::test ()
+     * @see class shared_state
+     * @see class write_ptr
      */
-    class ReadPtr {
+    class read_ptr {
     public:
         template<class Y,
                  class = typename std::enable_if
@@ -302,7 +324,7 @@ public:
                             std::is_convertible<Y*, const element_type*>::value
                          >::type
                 >
-        explicit ReadPtr (const VolatilePtr<Y>& vp)
+        explicit read_ptr (const shared_state<Y>& vp)
             :   l (vp.readWriteLock()),
                 p (vp.p),
                 d (vp.d),
@@ -312,7 +334,7 @@ public:
         }
 
         /**
-         * @brief ReadPtr with NoLockFailed obtains the lock if it is readily
+         * @brief read_ptr with NoLockFailed obtains the lock if it is readily
          * available. If the lock was not obtained it doesn't throw any
          * exception, but the accessors returns a null pointer. This function
          * fails much faster than setting timeout_ms=0 and discarding any
@@ -324,7 +346,7 @@ public:
                             std::is_convertible<Y*, const element_type*>::value
                          >::type
                 >
-        explicit ReadPtr (const VolatilePtr<Y>& vp, NoLockFailed)
+        explicit read_ptr (const shared_state<Y>& vp, NoLockFailed)
             :   l (vp.readWriteLock()),
                 p (vp.p),
                 d (vp.d),
@@ -334,13 +356,19 @@ public:
                 px = 0;
         }
 
-        // The copy constructor is not implemented anywhere and ReadPtr is not
-        // copyable. But if a there is a public copy constructor the compiler
-        // can perform return value optimization in read1 and write1.
-        ReadPtr(const ReadPtr&);
-        ReadPtr& operator=(ReadPtr const&) = delete;
+        read_ptr(read_ptr&& b)
+            :   l (b.l),
+                px (b.px)
+        {
+            p.swap (b.p);
+            d.swap (b.d);
+            b.px = 0;
+        }
 
-        ~ReadPtr() {
+        read_ptr(const read_ptr&) = delete;
+        read_ptr& operator=(read_ptr const&) = delete;
+
+        ~read_ptr() {
             // The destructor isn't called if the constructor throws.
             unlock ();
         }
@@ -386,7 +414,7 @@ public:
                 if (try_again)
                     l->unlock_shared ();
 
-                VOLATILEPTR_THROW_EXCEPTION(LockFailed()
+                SHARED_STATE_THROW_EXCEPTION(LockFailed()
                                       << typename LockFailed::timeout_value(timeout_ms)
                                       << typename LockFailed::try_again_value(try_again));
             }
@@ -396,7 +424,7 @@ public:
         }
 
         shared_mutex* l;
-        // p is 'const volatile T', compared to VolatilePtr::p which is just 'volatile T'.
+        // p is 'const volatile T', compared to shared_state::p which is just 'volatile T'.
         std::shared_ptr<const volatile T> p;
         std::shared_ptr<details> d;
         const T* px;
@@ -405,14 +433,14 @@ public:
 
 
     /**
-     * For examples of usage see void VolatilePtrTest::test ().
+     * For examples of usage see void shared_stateTest::test ().
      *
-     * The purpose of WritePtr is to provide exclusive access to an object for
-     * a single thread during the lifetime of the WritePtr.
+     * The purpose of write_ptr is to provide exclusive access to an object for
+     * a single thread during the lifetime of the write_ptr.
      *
-     * @see class ReadPtr
+     * @see class read_ptr
      */
-    class WritePtr {
+    class write_ptr {
     public:
         template<class Y,
                  class = typename std::enable_if
@@ -420,7 +448,7 @@ public:
                             std::is_convertible<Y*, element_type*>::value
                          >::type
                 >
-        explicit WritePtr (const VolatilePtr<Y>& vp)
+        explicit write_ptr (const shared_state<Y>& vp)
             :   l (vp.readWriteLock()),
                 p (vp.p),
                 d (vp.d),
@@ -429,14 +457,14 @@ public:
             lock ();
         }
 
-        // See ReadPtr(const volatile ReadPtr&, NoLockFailed)
+        // See read_ptr(const volatile read_ptr&, NoLockFailed)
         template<class Y,
                  class = typename std::enable_if
                          <
                             std::is_convertible<Y*, element_type*>::value
                          >::type
                 >
-        explicit WritePtr (const VolatilePtr<Y>& vp, NoLockFailed)
+        explicit write_ptr (const shared_state<Y>& vp, NoLockFailed)
             :   l (vp.readWriteLock()),
                 p (vp.p),
                 d (vp.d),
@@ -446,18 +474,26 @@ public:
                 px = 0;
         }
 
-        // See ReadPtr(const ReadPtr&)
-        WritePtr(const WritePtr&);
-        WritePtr& operator=(WritePtr const&) = delete;
+        write_ptr(write_ptr&& b)
+            :   l (b.l),
+                px (b.px)
+        {
+            p.swap (b.p);
+            d.swap (b.d);
+            b.px = 0;
+        }
 
-        ~WritePtr() {
+        write_ptr(const write_ptr&) = delete;
+        write_ptr& operator=(write_ptr const&) = delete;
+
+        ~write_ptr() {
             unlock ();
         }
 
         T* operator-> () const { return px; }
         T& operator* () const { return *px; }
         T* get () const { return px; }
-        VolatilePtr getPtr () const { return p; }
+        shared_state getPtr () const { return p; }
 
         void unlock() {
             if (px)
@@ -470,7 +506,7 @@ public:
         }
 
     private:
-        // See ReadPtr::lock
+        // See read_ptr::lock
         void lock() {
             int timeout_ms = d->timeout_ms;
 
@@ -490,7 +526,7 @@ public:
                 if (try_again)
                     l->unlock ();
 
-                VOLATILEPTR_THROW_EXCEPTION(LockFailed()
+                SHARED_STATE_THROW_EXCEPTION(LockFailed()
                                       << typename LockFailed::timeout_value(timeout_ms)
                                       << typename LockFailed::try_again_value(try_again));
             }
@@ -507,8 +543,8 @@ public:
     };
 
 
-//    ReadPtr read() volatile const { return ReadPtr(*this); }
-//    WritePtr write() volatile { return WritePtr(*this); }
+    read_ptr read() const { return read_ptr(*this); }
+    write_ptr write() { return write_ptr(*this); }
 
     /**
      * @brief readWriteLock returns the shared_mutex* object for this instance.
@@ -518,9 +554,9 @@ public:
 
 private:
     template<typename Y>
-    friend class VolatilePtr;
+    friend class shared_state;
 
-    explicit VolatilePtr ( std::shared_ptr<volatile T> p, std::shared_ptr<details> d ) : p(p), d(d) {}
+    explicit shared_state ( std::shared_ptr<volatile T> p, std::shared_ptr<details> d ) : p(p), d(d) {}
 
     std::shared_ptr<volatile T> p;
     std::shared_ptr<details> d;
@@ -528,28 +564,28 @@ private:
 
 
 template<typename T>
-typename VolatilePtr<T>::WritePtr write1( const VolatilePtr<T>& t) {
-    return typename VolatilePtr<T>::WritePtr(t);
+typename shared_state<T>::write_ptr write1( const shared_state<T>& t) {
+    return typename shared_state<T>::write_ptr(t);
 }
 
 template<typename T>
-typename VolatilePtr<T>::WritePtr write1( volatile const VolatilePtr<T>& t) {
-    return typename VolatilePtr<T>::WritePtr(t);
+typename shared_state<T>::write_ptr write1( volatile const shared_state<T>& t) {
+    return typename shared_state<T>::write_ptr(t);
 }
 
 template<typename T>
-typename VolatilePtr<T>::ReadPtr read1( const VolatilePtr<T>& t) {
-    return typename VolatilePtr<T>::ReadPtr(t);
+typename shared_state<T>::read_ptr read1( const shared_state<T>& t) {
+    return typename shared_state<T>::read_ptr(t);
 }
 
 template<typename T>
-typename VolatilePtr<T>::ReadPtr read1( volatile const VolatilePtr<T>& t) {
-    return typename VolatilePtr<T>::ReadPtr(t);
+typename shared_state<T>::read_ptr read1( volatile const shared_state<T>& t) {
+    return typename shared_state<T>::read_ptr(t);
 }
 
-class VolatilePtrTest {
+class shared_state_test {
 public:
     static void test ();
 };
 
-#endif // VOLATILELOCK_H
+#endif // SHARED_STATE_H
