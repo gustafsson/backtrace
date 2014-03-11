@@ -104,9 +104,10 @@ class shared_state_details {
 
 
 /**
- * The shared_state class should guarantee thread-safe access to objects, with
- *  - compile-time errors on missing locks
- *  - run-time exceptions with backtraces on deadlocks and failed locks
+ * The shared_state class is a smart pointer that should guarantee thread-safe
+ * access to objects, with
+ *  - compile-time errors on missing locks,
+ *  - run-time exceptions with backtraces on deadlocks and failed (timeout) locks,
  *  - run-time warnings on locks that are kept long enough to make it likely
  *    that other simultaneous lock attempts will fail.
  *
@@ -122,11 +123,11 @@ class shared_state_details {
  *                              // in multiple threads.
  *    a.write()->foo();         // Mutally exclusive write access
  *    a.read()->bar();          // Simultaneous read-only access
- *    a->baz();                 // use the volailte qualifier to denote
- *                              // thread-safe method
+ *    a->baz();                 // use the volailte qualifier to denote thread-
+ *                              // safe method that doesn't require a lock
  *
- *    a.read()->foo(); <-- error  // a.read() gives only const access
- *    a->foo();        <-- error  // un-safe method call fails in compile time
+ *    a.read()->foo(); <-- error  // a.read() gives only const access, foo is non-const
+ *    a->foo();        <-- error  // un-safe method call fails in compile time, foo is non-volatile
  *
  *    try {
  *       a.write()->foo();
@@ -140,7 +141,7 @@ class shared_state_details {
  *                      // currently not locked by any other thread)
  *
  * For more complete examples see:
- *    shared_stateTest::test ()
+ *    shared_state_test::test ()
  *
  *
  * To use shared_state to ensure thread-safe access to some previously
@@ -294,7 +295,7 @@ public:
         shared_mutable_state(const shared_state& t)
             :
               p(t.p),
-              px(const_cast<const T*> (p.get ()))
+              px(const_cast<T*> (p.get ()))
         {}
 
         T* operator-> () const { return px; }
@@ -302,12 +303,12 @@ public:
         T* get () const { return px; }
 
     private:
-        T* px;
         std::shared_ptr<volatile T> p;
+        T* px;
     };
 
     /**
-     * For examples of usage see void shared_stateTest::test ().
+     * For examples of usage see void shared_state_test::test ().
      *
      * The purpose of read_ptr is to provide thread-safe access to an a const
      * object for a thread during the lifetime of the read_ptr. This access
@@ -317,7 +318,7 @@ public:
      * The accessors without NoLockFailed always returns an accessible
      * instance, never null. If a lock fails a LockFailed exception is thrown.
      *
-     * @see void shared_stateTest::test ()
+     * @see void shared_state_test::test ()
      * @see class shared_state
      * @see class write_ptr
      */
@@ -438,7 +439,7 @@ public:
 
 
     /**
-     * For examples of usage see void shared_stateTest::test ().
+     * For examples of usage see void shared_state_test::test ().
      *
      * The purpose of write_ptr is to provide exclusive access to an object for
      * a single thread during the lifetime of the write_ptr.
