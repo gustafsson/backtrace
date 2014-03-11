@@ -221,7 +221,7 @@ void shared_state_test::
 
     // Lock for a single call
     A::write_ptr (mya)->a (5);
-    write1(mya)->a (5);
+    mya.write()->a (5);
 
     {
         // Lock for read access
@@ -239,7 +239,7 @@ void shared_state_test::
 
     // Lock for a single call
     A::read_ptr (mya)->a ();
-    read1(mya)->a ();
+    mya.read ()->a ();
 
     // Can call volatile methods
     mya->test ();
@@ -261,15 +261,16 @@ void shared_state_test::
         // Bad practice
         // Assume 'a ()' is const and doesn't have any other side effects.
         int sum = 0;
-        sum += read1 (mya)->a ();
-        sum += read1 (mya)->a ();
+        sum += mya.read ()->a ();
+        sum += mya.read ()->a ();
         // A common assumption here would be that a () returns the same result
         // twice. But this is NOT guaranteed. Another thread might change 'mya'
         // with a write_ptr between the two calls.
         //
         // That is also how methods with synchronized behave in Java.
         //
-        // In general, using multiple read1 is a smell that you're doing it wrong.
+        // In general, using multiple .read() is a smell that you're doing it
+        // wrong.
     }
 
     {
@@ -345,7 +346,7 @@ void shared_state_test::
     {
         const A::Ptr mya1(new A);
         {A::read_ptr r(mya1);}
-        {A::write_ptr w(mya1);}
+//        {A::write_ptr w(mya1);}
 
 //        const volatile A::Ptr mya2(new A);
 //        {A::read_ptr r(mya2);}
@@ -436,14 +437,14 @@ void shared_state_test::
 
         Timer timer;
         for (int i=0; i<1000; i++) {
-            a.readWriteLock ()->try_lock ();
+            a.readWriteLock ().try_lock ();
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 10000e-9 : 210e-9 : 300e-9);
         EXCEPTION_ASSERT_LESS(debug ? 20e-9 : 20e-9, T);
 
         for (int i=0; i<1000; i++) {
-            a.readWriteLock ()->try_lock_for(boost::chrono::milliseconds(0));
+            a.readWriteLock ().try_lock_for(boost::chrono::milliseconds(0));
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? 8000e-9 : 4000e-9);
@@ -559,19 +560,19 @@ void shared_state_test::
     }
 
     // More thoughts on design decisions
-    // shared_state provides two short methods read1 and write1. They are a bit
-    // controversial as they are likely to lead to inconsistent coding styles
-    // when mixing the two versions.
-    //  sum += read1 (mya)->a ()
+    // shared_state provides two short methods read() and write(). They are a
+    // bit controversial as they are likely to lead to inconsistent coding
+    // styles when mixing the two versions.
+    //  sum += mya.read ()->a ()
     //  sum += A::read_ptr (mya)->a ()
     // The latter is more explicit which in this case is good to emphasize that
     // a wrapper object is being constructed to manage access. It's also
     // generic enough to be used as the only way to lock an object.
     //
-    // On the other hand, read1 and write1 effectively apply to the concept that
+    // On the other hand, read() and write() effectively apply to the concept that
     // locks should only be kept for a short while.
     //
-    // multiple read1 and write1 in the same function are bad smells.
+    // multiple read() and write() in the same function are bad smells.
 }
 
 
@@ -642,7 +643,7 @@ void WriteWhileReadingThread::
 
 
 void readTwice(B::Ptr b) {
-    // int i = read1(b)->work_a_lot(1) + read1(b)->work_a_lot(2);
+    // int i = b.read()->work_a_lot(1) + b.read()->work_a_lot(2);
     // faster than default timeout
     int i = B::read_ptr(b)->work_a_lot(3)
           + B::read_ptr(b)->work_a_lot(4);
@@ -651,7 +652,7 @@ void readTwice(B::Ptr b) {
 
 
 void writeTwice(B::Ptr b) {
-    // int i = write1(b)->work_a_lot(3) + write1(b)->work_a_lot(4);
+    // int i = b.write()->work_a_lot(3) + b.write()->work_a_lot(4);
     // faster than default timeout
     int i = B::write_ptr(b)->work_a_lot(1)
           + B::write_ptr(b)->work_a_lot(2);
