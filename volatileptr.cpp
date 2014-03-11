@@ -76,14 +76,106 @@ private:
 };
 
 
+template<>
+class VolatilePtrTypeTraits<A> {
+public:
+    int timeout_ms() { return 1; }
+    int verify_execution_time_ms() { return -1; }
+    VerifyExecutionTime::report report_func() { return 0; }
+};
+
+
 class B
 {
 public:
+    class VolatilePtrTypeTraits {
+    public:
+        int timeout_ms() { return 10; }
+        int verify_execution_time_ms() { return -1; }
+        VerifyExecutionTime::report report_func() { return 0; }
+    };
+
     typedef VolatilePtr<B> Ptr;
     typedef Ptr::ReadPtr ReadPtr;
     typedef Ptr::WritePtr WritePtr;
 
     int work_a_lot(int i) const;
+};
+
+
+class with_0timeout_without_verify
+{
+public:
+    typedef VolatilePtr<with_0timeout_without_verify> Ptr;
+    typedef VolatilePtr<const with_0timeout_without_verify> ConstPtr;
+    typedef Ptr::ReadPtr ReadPtr;
+    typedef Ptr::WritePtr WritePtr;
+};
+
+
+template<>
+class VolatilePtrTypeTraits<with_0timeout_without_verify> {
+public:
+    int timeout_ms() { return 0; }
+    int verify_execution_time_ms() { return -1; }
+    VerifyExecutionTime::report report_func() { return 0; }
+};
+
+
+class with_1timeout_and_1000verify
+{
+public:
+    typedef VolatilePtr<with_1timeout_and_1000verify> Ptr;
+    typedef VolatilePtr<const with_1timeout_and_1000verify> ConstPtr;
+    typedef Ptr::ReadPtr ReadPtr;
+    typedef Ptr::WritePtr WritePtr;
+};
+
+
+template<>
+class VolatilePtrTypeTraits<with_1timeout_and_1000verify> {
+public:
+    int timeout_ms() { return 1; }
+    int verify_execution_time_ms() { return 1000; }
+    VerifyExecutionTime::report report_func() { return 0; }
+};
+
+
+class with_2timeout_without_verify
+{
+public:
+    typedef VolatilePtr<with_2timeout_without_verify> Ptr;
+    typedef VolatilePtr<const with_2timeout_without_verify> ConstPtr;
+    typedef Ptr::ReadPtr ReadPtr;
+    typedef Ptr::WritePtr WritePtr;
+};
+
+
+template<>
+class VolatilePtrTypeTraits<with_2timeout_without_verify> {
+public:
+    int timeout_ms() { return 2; }
+    int verify_execution_time_ms() { return -1; }
+    VerifyExecutionTime::report report_func() { return 0; }
+};
+
+
+class with_1timeout_and_1verify
+{
+public:
+    typedef VolatilePtr<with_1timeout_and_1verify> Ptr;
+    typedef VolatilePtr<const with_1timeout_and_1verify> ConstPtr;
+    typedef Ptr::ReadPtr ReadPtr;
+    typedef Ptr::WritePtr WritePtr;
+};
+
+
+template<>
+class VolatilePtrTypeTraits<with_1timeout_and_1verify> {
+public:
+    int timeout_ms() { return 1; }
+    int verify_execution_time_ms() { return 1; }
+    VerifyExecutionTime::report report_func() { return 0; }
 };
 
 
@@ -102,11 +194,13 @@ public:
     static void test();
 };
 
+//static char (&test(...))[2];
+
 void VolatilePtrTest::
         test ()
 {
     // It should guarantee compile-time thread safe access to objects.
-    A::Ptr mya (new A, 1, -1);
+    A::Ptr mya (new A);
 
     // can't read from mya
     // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
@@ -249,22 +343,30 @@ void VolatilePtrTest::
 
     // It should be accessible from various pointer types
     {
-        const A::Ptr mya1(new A, 1, -1);
+        const A::Ptr mya1(new A);
         {A::ReadPtr r(mya1);}
         {A::WritePtr w(mya1);}
 
-        const volatile A::Ptr mya2(new A, 1, -1);
-        {A::ReadPtr r(mya2);}
-        {A::WritePtr w(mya2);}
+//        const volatile A::Ptr mya2(new A);
+//        {A::ReadPtr r(mya2);}
+//        {A::WritePtr w(mya2);}
 
-        const volatile A::ConstPtr mya3(new A, 1, -1);
-        {A::ReadPtr r(mya3);}
+//        const volatile A::ConstPtr mya3(new A);
+//        {A::ReadPtr r(mya3);}
 
-        A::ConstPtr mya4(new A, 1, -1);
+        A::ConstPtr mya4(new A);
         {A::ReadPtr r(mya4);}
 
-        {A::WritePtr w(mya);}
+        {A::ReadPtr r(A::Ptr(new A));}
+        {A::WritePtr w(A::Ptr(new A));}
     }
+
+    // VolatilePtr can be used in a map.
+    {
+        std::map<A::Ptr, int> mymap;
+        mymap.find (A::Ptr());
+    }
+
 
     // Verify the behaviour of a practice usually frowned upon; throwing from constructors.
     //
@@ -279,13 +381,51 @@ void VolatilePtrTest::
         EXCEPTION_ASSERT(!outer_destructor);
     }
 
-    // 'NoLockFailed' should be fast, with less than a 0.1 microsecond overhead
-    // in a 'release' build.
+    // VolatilePtr should cause an overhead of less than 0.1 microseconds in a
+    // 'release' build when using 'NoLockFailed'.
     {
-        A::Ptr a(new A, 0, -1);
-        A::ConstPtr consta(a);
+        with_0timeout_without_verify::Ptr a(new with_0timeout_without_verify);
+        with_0timeout_without_verify::ConstPtr consta(a);
 
-        A::WritePtr r(a);
+        with_0timeout_without_verify::WritePtr r(a);
+        double T;
+
+        bool debug = false;
+    #ifdef _DEBUG
+        debug = true;
+    #endif
+        bool gdb = DetectGdb::is_running_through_gdb();
+
+        Timer timer;
+        for (int i=0; i<1000; i++) {
+            with_0timeout_without_verify::WritePtr(a,NoLockFailed());
+        }
+        T = timer.elapsedAndRestart ()/1000;
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 2000e-9 : 220e-9 : 120e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
+
+        for (int i=0; i<1000; i++) {
+            with_0timeout_without_verify::ReadPtr(a,NoLockFailed());
+        }
+        T = timer.elapsedAndRestart ()/1000;
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 200e-9 : 100e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
+
+        for (int i=0; i<1000; i++) {
+            with_0timeout_without_verify::ReadPtr(consta,NoLockFailed());
+        }
+        T = timer.elapsedAndRestart ()/1000;
+        EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 260e-9 : 100e-9);
+        EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
+    }
+
+    // VolatilePtr should fail fast when using 'NoLockFailed', within 0.1
+    // microseconds in a 'release' build.
+    {
+        with_0timeout_without_verify::Ptr a(new with_0timeout_without_verify);
+        with_0timeout_without_verify::ConstPtr consta(a);
+
+        with_0timeout_without_verify::WritePtr r(a);
         double T;
 
         bool debug = false;
@@ -310,42 +450,43 @@ void VolatilePtrTest::
         EXCEPTION_ASSERT_LESS(300e-9, T);
 
         for (int i=0; i<1000; i++) {
-            try { A::WritePtr w(a); } catch (const LockFailed&) {}
+            try { with_0timeout_without_verify::WritePtr w(a); } catch (const LockFailed&) {}
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? 80000e-9 : 30000e-9);
         EXCEPTION_ASSERT_LESS(debug ? 12000e-9 : 6000e-9, T);
 
         for (int i=0; i<1000; i++) {
-            EXPECT_EXCEPTION(LockFailed, A::WritePtr w(a));
+            EXPECT_EXCEPTION(LockFailed, with_0timeout_without_verify::WritePtr w(a));
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 40000e-9 : 25000e-9 : 28000e-9);
         EXCEPTION_ASSERT_LESS(debug ? 10000e-9 : 6000e-9, T);
 
         for (int i=0; i<1000; i++) {
-            A::WritePtr(a,NoLockFailed());
+            with_0timeout_without_verify::WritePtr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 2000e-9 : 220e-9 : 120e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 33e-9, T);
 
         for (int i=0; i<1000; i++) {
-            A::ReadPtr(a,NoLockFailed());
+            with_0timeout_without_verify::ReadPtr(a,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 200e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
 
         for (int i=0; i<1000; i++) {
-            A::ReadPtr(consta,NoLockFailed());
+            with_0timeout_without_verify::ReadPtr(consta,NoLockFailed());
         }
         T = timer.elapsedAndRestart ()/1000;
         EXCEPTION_ASSERT_LESS(T, debug ? gdb ? 250e-9 : 260e-9 : 100e-9);
         EXCEPTION_ASSERT_LESS(debug ? 50e-9 : 32e-9, T);
     }
 
-    // It should cause a low overhead (even without NoLockFailed) but without VerifyExecutionTime
+    // VolatilePtr should cause an overhead of less than 0.3 microseconds in a
+    // 'release' build when 'verify_execution_time_ms < 0'.
     {
         bool debug = false;
     #ifdef _DEBUG
@@ -360,7 +501,7 @@ void VolatilePtrTest::
             a->noinlinecall ();
         float T = timer.elapsed ()/N;
 
-        A::Ptr a2(new A, 1, -1);
+        A::Ptr a2(new A);
         Timer timer2;
         for (int i=0; i<N; i++)
             A::WritePtr(a2)->noinlinecall();
@@ -371,7 +512,7 @@ void VolatilePtrTest::
             A::ReadPtr(a2)->noinlinecall();
         float T3 = timer3.elapsed ()/N;
 
-        EXCEPTION_ASSERT_LESS(T, debug ? 120e-9 : 2e-9);
+        EXCEPTION_ASSERT_LESS(T, debug ? 150e-9 : 2e-9);
 #ifdef __GCC__
         EXCEPTION_ASSERT_LESS(T2-T, 110e-9);
         EXCEPTION_ASSERT_LESS(T3-T, 110e-9);
@@ -381,7 +522,8 @@ void VolatilePtrTest::
 #endif
     }
 
-    // It should cause a low overhead (even without NoLockFailed and with VerifyExecutionTime)
+    // VolatilePtr should cause an overhead of less than 1.5 microseconds in a
+    // 'release' build when 'verify_execution_time_ms >= 0'.
     {
         bool debug = false;
     #ifdef _DEBUG
@@ -395,15 +537,15 @@ void VolatilePtrTest::
             a->noinlinecall ();
         float T = timer.elapsed ()/N;
 
-        A::Ptr a2(new A, 1, 1000);
+        with_1timeout_and_1000verify::Ptr a2(new with_1timeout_and_1000verify);
         Timer timer2;
         for (int i=0; i<N; i++)
-            A::WritePtr(a2)->noinlinecall();
+            with_1timeout_and_1000verify::WritePtr w(a2);
         float T2 = timer2.elapsed ()/N;
 
         Timer timer3;
         for (int i=0; i<N; i++)
-            A::ReadPtr(a2)->noinlinecall();
+            with_1timeout_and_1000verify::ReadPtr r(a2);
         float T3 = timer3.elapsed ()/N;
 
         EXCEPTION_ASSERT_LESS(T, debug ? 120e-9 : 2e-9);
@@ -521,24 +663,24 @@ void writeTwice(B::Ptr b) {
 class UseAandB
 {
 public:
-    UseAandB(A::Ptr a, B::Ptr b) : a(a), b(b) {}
+    UseAandB(with_2timeout_without_verify::Ptr a, with_2timeout_without_verify::Ptr b) : a(a), b(b) {}
 
     void operator()() {
         try {
 
-            A::WritePtr aw(a);
+            with_2timeout_without_verify::WritePtr aw(a);
             this_thread::sleep_for (chrono::milliseconds(1));
-            B::WritePtr bw(b);
+            with_2timeout_without_verify::WritePtr bw(b);
 
-        } catch (const B::Ptr::LockFailed& x) {
+        } catch (const with_2timeout_without_verify::Ptr::LockFailed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
             EXCEPTION_ASSERT(backtrace);
         }
     }
 
 private:
-    A::Ptr a;
-    B::Ptr b;
+    with_2timeout_without_verify::Ptr a;
+    with_2timeout_without_verify::Ptr b;
 
 public:
     static void test();
@@ -551,7 +693,7 @@ void WriteWhileReadingThread::
     // It should detect deadlocks from recursive locks
     {
         Timer timer;
-        B::Ptr b(new B, 10, -1);
+        B::Ptr b(new B);
 
         // can't lock for write twice (recursive locks)
         EXPECT_EXCEPTION(B::Ptr::LockFailed, writeTwice(b));
@@ -578,18 +720,18 @@ void WriteWhileReadingThread::
 
     // It should produce run-time exceptions with backtraces on deadlocks
     {
-        A::Ptr a(new A, 2, -1);
-        B::Ptr b(new B, 2, -1);
+        with_2timeout_without_verify::Ptr a(new with_2timeout_without_verify);
+        with_2timeout_without_verify::Ptr b(new with_2timeout_without_verify);
 
         boost::thread t = boost::thread(UseAandB(a,b));
 
         try {
 
-            B::WritePtr bw(b);
+            with_2timeout_without_verify::WritePtr bw(b);
             this_thread::sleep_for (chrono::milliseconds(1));
-            A::WritePtr aw(a);
+            with_2timeout_without_verify::WritePtr aw(a);
 
-        } catch (const A::Ptr::LockFailed& x) {
+        } catch (const with_2timeout_without_verify::Ptr::LockFailed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
             EXCEPTION_ASSERT(backtrace);
         }
@@ -600,12 +742,12 @@ void WriteWhileReadingThread::
     // It should silently warn if a lock is kept so long that a simultaneous lock
     // attempt would fail.
     {
-        A::Ptr a(new A, 1, 1);
+        with_1timeout_and_1verify::Ptr a(new with_1timeout_and_1verify);
 
         bool did_report = false;
 
         VerifyExecutionTime::set_default_report ([&did_report](float, float){ did_report = true; });
-        A::WritePtr w(a);
+        with_1timeout_and_1verify::WritePtr w(a);
         VerifyExecutionTime::set_default_report (0);
 
         this_thread::sleep_for (chrono::milliseconds(10));
