@@ -111,7 +111,9 @@ class shared_state_details {
  *  - run-time warnings on locks that are kept long enough to make it likely
  *    that other simultaneous lock attempts will fail.
  *
- * Quick cheat sheet:
+ *
+ * Quick cheat sheet
+ * -----------------
  *    class A {
  *    public:
  *       void foo();
@@ -132,7 +134,7 @@ class shared_state_details {
  *    {
  *        auto w = a.write();   // Keep a lock for consecutive calls
  *        w->foo();
- *        w->foo();
+ *        w->bar();
  *    }
  *
  *    try {
@@ -142,26 +144,55 @@ class shared_state_details {
  *       // The timeout is set when instanciating shared_state<A>.
  *    }
  *
- *    shared_state<A>::write_ptr w(a, no_lock_failed()); // Returns immediately without waiting.
+ *    auto w(a, no_lock_failed()); // Returns immediately without waiting.
  *    if (w) w->foo();  // Only lock for access if readily availaible (i.e
  *                      // currently not locked by any other thread)
  *
- * For more complete examples see:
- *    shared_state_test::test ()
+ * For more complete examples (that actually compile) see
+ * shared_state_test::test () in shared_state.cpp
  *
  *
- * To use shared_state to ensure thread-safe access to some previously
- * un-protected data of class MyType, wrap all 'new MyType' calls as arguments
- * to the constructor of shared_state<MyType>. Like in the example above for
- * 'class A'.
+ * Using shared_state
+ * ------------------
+ * Use shared_state to ensure thread-safe access to otherwise unprotected data
+ * of class MyType by wrapping all 'MyType* p = new MyType' calls as:
  *
- * The helper classes read_ptr and write_ptr provides both thread-safe
- * access (by aquiring a lock) and exception-safe access (by RAII).
+ *     shared_state<MyType> p{new MyType};
  *
- * The idea is to let the 'volatile' qualifier denote that an object can be
- * modified by any thread at any time and use a pointer to a volatile object
- * when juggling references to objects. When you need the data you access it
- * safely through shared_state::read_ptr and shared_state::write_ptr.
+ *
+ * There are four ways to access the data in 'p'.
+ *
+ * 1. Thread-safe and exception-safe shared read-only access (lock and RAII)
+ *
+ *     p.read()->...
+ *
+ * or
+ *     shared_state<MyType>::read_ptr r(p);
+ *     r->...
+ *     r->...
+ *
+ *
+ * 2. Thread-safe and exception-safe mutally exclusive read and write access
+ *
+ *     p.write()->...
+ *
+ * or
+ *     shared_state<MyType>::write_ptr w(p);
+ *     w->...
+ *     w->...
+ *
+ *
+ * 3. Non thread-safe mutable state
+ *
+ *     shared_state<MyType>::shared_mutable_state m(p);
+ *     m->...
+ *     m->...
+ *
+ *
+ * 4. Thread-safe access to methods that are declared as 'thread-safe' by using
+ * the volatile qualifier on the method
+ *
+ *     p->...
  *
  * From a volatile object you can only access methods that are volatile (just
  * like only const methods are accessible from a const object). Using the
@@ -171,13 +202,16 @@ class shared_state_details {
  * "The volatile keyword in C++11 ISO Standard code is to be used only for
  * hardware access; do not use it for inter-thread communication." [msdn]
  * shared_state doesn't use the volatile qualifier for inter-thread
- * communication but to ensure un-safe methods are called without adequate
- * locks.
+ * communication but to ensure un-safe methods aren't called without adequate
+ * locks. volailte is merely some sort of syntactic sugar in this context.
  *
- * Idea partly based on this article:
+ * The idea of letting volatile on methods denote 'thread-safe method' is based
+ * on this article:
  * http://www.drdobbs.com/cpp/volatile-the-multithreaded-programmers-b/184403766
  *
  *
+ * Performance and overhead
+ * ------------------------
  * shared_state should cause an overhead of less than 0.1 microseconds in a
  * 'release' build when using 'no_lock_failed'.
  *
@@ -191,10 +225,13 @@ class shared_state_details {
  * 'release' build when 'verify_execution_time_ms > 0'.
  *
  *
+ * Configuring timeouts
+ * --------------------
  * It is possible to use different timeouts, different expected execution times
  * and to disable the timeout and expected execution time. Create a template
  * specialization of shared_state_traits to override the defaults. You can also
  * create an internal class called shared_state_traits within your type.
+ *
  *
  * Author: johan.b.gustafsson@gmail.com
  */

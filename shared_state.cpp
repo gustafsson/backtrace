@@ -225,7 +225,7 @@ void shared_state_test::
     A::read_ptr (consta)->const_method ();
 
     // Can get unsafe access without locks using a shared_mutable_state
-    shared_state<A>::shared_mutable_state (mya)->const_method ();
+    shared_state<A>::shared_mutable_state (mya)->method (1);
 
     // Can not create a write_ptr to a const pointer.
     // error: no matching function for call to 'shared_state<A>::write_ptr::write_ptr (shared_state<A>::ConstPtr)'
@@ -327,7 +327,7 @@ void shared_state_test::
     {
         const A::ptr mya1(new A);
         {A::read_ptr r(mya1);}
-//        {A::write_ptr w(mya1);} // Cant write to a const shared_state
+        // {A::write_ptr w(mya1);} // Cant write to a const shared_state
 
         A::const_ptr mya2(new A);
         {A::read_ptr r(mya2);}
