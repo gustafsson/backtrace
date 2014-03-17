@@ -65,7 +65,7 @@ public:
     void    volatile_member_method () volatile;
     void    consttest () const volatile;
 
-    int     noinlinecall() const { return printf (""); }
+    int     noinlinecall() const { std::cout << ""; return 0; }
 
 private:
 
@@ -375,7 +375,7 @@ void shared_state_test::
     // shared_state should cause an overhead of less than 0.3 microseconds in a
     // 'release' build when 'verify_execution_time_ms < 0'.
     {
-        int N = 10000;
+        int N = 1000;
 
         boost::shared_ptr<A> a(new A);
         TRACE_PERF("shared_state should cause a low overhead : reference");
