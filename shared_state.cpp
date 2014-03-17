@@ -171,7 +171,7 @@ void shared_state_test::
         test ()
 {
     // It should guarantee compile-time thread safe access to objects.
-    shared_state<A> mya (new A);
+    shared_state<A> mya {new A};
 
     // can't read from mya
     // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
@@ -183,7 +183,7 @@ void shared_state_test::
 
     {
         // Lock for write access
-        A::write_ptr w (mya);
+        A::write_ptr w {mya};
         w->method (5);
         A& b = *w;
         b.method (5);
@@ -196,7 +196,7 @@ void shared_state_test::
 
     {
         // Lock for read access
-        A::read_ptr r (mya);
+        A::read_ptr r {mya};
         EXCEPTION_ASSERT_EQUALS (r->const_method (), 5);
         const A& b = *r;
         EXCEPTION_ASSERT_EQUALS (b.const_method (), 5);
@@ -250,7 +250,7 @@ void shared_state_test::
     {
         // Good practice
 
-        A::read_ptr r (mya); // Lock the data you need before you start using it.
+        A::read_ptr r {mya}; // Lock the data you need before you start using it.
         int sum = 0;
         sum += r->const_method ();
         sum += r->const_method ();
@@ -274,7 +274,7 @@ void shared_state_test::
         // instance before you start using it. This requires a user specified
         // copy that ignores any values of shared_state.
 
-        const A mylocal_a = *A::read_ptr (mya);
+        const A mylocal_a = *A::read_ptr {mya};
         int sum = 0;
         sum += mylocal_a.const_method ();
         sum += mylocal_a.const_method ();
@@ -289,9 +289,9 @@ void shared_state_test::
         // consumers). This requires user specified assignment that ignores
         // any values of shared_state.
 
-        A mylocal_a = *A::read_ptr (mya); // Produce a writable copy
+        A mylocal_a = *A::read_ptr {mya}; // Produce a writable copy
         mylocal_a.method (5);
-        *A::write_ptr (mya) = mylocal_a;
+        *A::write_ptr {mya} = mylocal_a;
 
         // This will not be as easy with multiple producers as you need to
         // manage merging.
@@ -325,21 +325,21 @@ void shared_state_test::
 
     // It should be accessible from various pointer types
     {
-        const A::ptr mya1(new A);
-        {A::read_ptr r(mya1);}
-        // {A::write_ptr w(mya1);} // Cant write to a const shared_state
+        const A::ptr mya1{new A};
+        A::read_ptr{mya1};
+        // A::write_ptr{mya1}; // Cant write to a const shared_state
 
-        A::const_ptr mya2(new A);
-        {A::read_ptr r(mya2);}
+        A::const_ptr mya2{new A};
+        A::read_ptr{mya2};
 
-        {A::read_ptr r(A::ptr(new A));}
-        {A::write_ptr w(A::ptr(new A));}
+        A::read_ptr{A::ptr{new A}};
+        A::write_ptr{A::ptr{new A}};
     }
 
     // shared_state can be used in a map.
     {
         std::map<A::ptr, int> mymap;
-        mymap.find (A::ptr());
+        mymap.find (A::ptr{});
     }
 
 
@@ -362,7 +362,7 @@ void shared_state_test::
     {
         int N = 1000;
 
-        shared_state<C> c(new C);
+        shared_state<C> c{new C};
         TRACE_PERF("shared_state should cause a low default overhead");
         for (int i=0; i<N; i++)
         {
@@ -377,17 +377,17 @@ void shared_state_test::
     {
         int N = 1000;
 
-        boost::shared_ptr<A> a(new A);
+        boost::shared_ptr<A> a{new A};
         TRACE_PERF("shared_state should cause a low overhead : reference");
         for (int i=0; i<N; i++)
             a->noinlinecall ();
 
-        A::ptr a2(new A);
+        A::ptr a2{new A};
         trace_perf_.reset("shared_state should cause a low overhead without verify_execution_time_ms");
         for (int i=0; i<N; i++)
         {
-            A::write_ptr(a2)->noinlinecall();
-            A::read_ptr(a2)->noinlinecall();
+            A::write_ptr{a2}->noinlinecall();
+            A::read_ptr{a2}->noinlinecall();
         }
     }
 
@@ -398,22 +398,22 @@ void shared_state_test::
     // shared_state should fail fast when using 'no_lock_failed', within 0.1
     // microseconds in a 'release' build.
     {
-        with_timeout_0::ptr a(new with_timeout_0);
-        with_timeout_0::const_ptr consta(a);
+        with_timeout_0::ptr a{new with_timeout_0};
+        with_timeout_0::const_ptr consta{a};
 
         // Make subsequent lock attempts fail
-        with_timeout_0::write_ptr r(a);
+        with_timeout_0::write_ptr r{a};
 
         TRACE_PERF("shared_state should fail fast with no_lock_failed");
         for (int i=0; i<1000; i++) {
-            with_timeout_0::write_ptr(a,no_lock_failed());
-            with_timeout_0::read_ptr(a,no_lock_failed());
-            with_timeout_0::read_ptr(consta,no_lock_failed());
+            with_timeout_0::write_ptr{a,no_lock_failed()};
+            with_timeout_0::read_ptr{a,no_lock_failed()};
+            with_timeout_0::read_ptr{consta,no_lock_failed()};
         }
 
         trace_perf_.reset("shared_state should fail fast with timeout=0");
         for (int i=0; i<1000; i++) {
-            EXPECT_EXCEPTION(lock_failed, with_timeout_0::write_ptr w(a));
+            EXPECT_EXCEPTION(lock_failed, with_timeout_0::write_ptr w{a});
         }
     }
 
@@ -477,7 +477,7 @@ void A::
 int B::
     work_a_lot(int /*i*/) const
 {
-    this_thread::sleep_for (chrono::milliseconds(5));
+    this_thread::sleep_for (chrono::milliseconds{5});
     return 0;
 }
 
@@ -493,18 +493,18 @@ void WriteWhileReadingThread::
         operator() ()
 {
     // Make sure readTwice starts before this function
-    this_thread::sleep_for (chrono::milliseconds(1));
+    this_thread::sleep_for (chrono::milliseconds{1});
 
     // Write access should fail as the first thread attempts a recursive read_ptr.
-    EXPECT_EXCEPTION(lock_failed, B::write_ptr w(b); );
+    EXPECT_EXCEPTION(lock_failed, B::write_ptr{b}; );
 }
 
 
 void readTwice(B::ptr b) {
     // int i = b.read()->work_a_lot(1) + b.read()->work_a_lot(2);
     // faster than default timeout
-    int i = B::read_ptr(b)->work_a_lot(3)
-          + B::read_ptr(b)->work_a_lot(4);
+    int i = B::read_ptr{b}->work_a_lot(3)
+            + B::read_ptr{b}->work_a_lot(4);
     (void) i;
 }
 
@@ -512,8 +512,8 @@ void readTwice(B::ptr b) {
 void writeTwice(B::ptr b) {
     // int i = b.write()->work_a_lot(3) + b.write()->work_a_lot(4);
     // faster than default timeout
-    int i = B::write_ptr(b)->work_a_lot(1)
-          + B::write_ptr(b)->work_a_lot(2);
+    int i = B::write_ptr{b}->work_a_lot(1)
+            + B::write_ptr{b}->work_a_lot(2);
     (void) i;
 }
 
@@ -527,9 +527,9 @@ public:
     void operator()() {
         try {
 
-            with_timeout_2_without_verify::write_ptr aw(a);
-            this_thread::sleep_for (chrono::milliseconds(1));
-            with_timeout_2_without_verify::write_ptr bw(b);
+            with_timeout_2_without_verify::write_ptr aw{a};
+            this_thread::sleep_for (chrono::milliseconds{1});
+            with_timeout_2_without_verify::write_ptr bw{b};
 
         } catch (const with_timeout_2_without_verify::ptr::lock_failed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
@@ -551,7 +551,7 @@ void WriteWhileReadingThread::
 {
     // It should detect deadlocks from recursive locks
     {
-        B::ptr b(new B);
+        B::ptr b{new B};
 
         // can't lock for write twice (recursive locks)
         EXPECT_EXCEPTION(B::ptr::lock_failed, writeTwice(b));
@@ -562,24 +562,23 @@ void WriteWhileReadingThread::
 
         // can't lock for read twice if another thread request a write in the middle
         // that write request will fail but try_again will make this thread throw the error as well
-        WriteWhileReadingThread wb(b);
-        boost::thread t = boost::thread(wb);
+        boost::thread t{WriteWhileReadingThread{b}};
         EXPECT_EXCEPTION(lock_failed, readTwice(b));
         t.join ();
     }
 
     // It should produce run-time exceptions with backtraces on deadlocks
     {
-        with_timeout_2_without_verify::ptr a(new with_timeout_2_without_verify);
-        with_timeout_2_without_verify::ptr b(new with_timeout_2_without_verify);
+        with_timeout_2_without_verify::ptr a{new with_timeout_2_without_verify};
+        with_timeout_2_without_verify::ptr b{new with_timeout_2_without_verify};
 
-        boost::thread t = boost::thread(UseAandB(a,b));
+        boost::thread t{UseAandB{a,b}};
 
         try {
 
-            with_timeout_2_without_verify::write_ptr bw(b);
-            this_thread::sleep_for (chrono::milliseconds(1));
-            with_timeout_2_without_verify::write_ptr aw(a);
+            with_timeout_2_without_verify::write_ptr bw{b};
+            this_thread::sleep_for (chrono::milliseconds{1});
+            with_timeout_2_without_verify::write_ptr aw{a};
 
         } catch (const with_timeout_2_without_verify::ptr::lock_failed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
@@ -592,15 +591,15 @@ void WriteWhileReadingThread::
     // It should silently warn if a lock is kept so long that a simultaneous lock
     // attempt would fail.
     {
-        shared_state<with_timeout_1_and_verify_1> a(new with_timeout_1_and_verify_1);
+        shared_state<with_timeout_1_and_verify_1> a{new with_timeout_1_and_verify_1};
 
         bool did_report = false;
 
         VerifyExecutionTime::set_default_report ([&did_report](float, float){ did_report = true; });
-        shared_state<with_timeout_1_and_verify_1>::write_ptr w(a);
+        shared_state<with_timeout_1_and_verify_1>::write_ptr w{a};
         VerifyExecutionTime::set_default_report (0);
 
-        this_thread::sleep_for (chrono::milliseconds(10));
+        this_thread::sleep_for (chrono::milliseconds{10});
 
         EXCEPTION_ASSERT(!did_report);
         w.unlock ();

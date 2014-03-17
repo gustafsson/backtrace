@@ -121,7 +121,7 @@ class shared_state_details {
  *       void baz() volatile;
  *    };
  *
- *    shared_state<A> a(new A); // Smart pointer that makes its data safe to use
+ *    shared_state<A> a{new A}; // Smart pointer that makes its data safe to use
  *                              // in multiple threads.
  *    a.write()->foo();         // Mutally exclusive write access
  *    a.read()->bar();          // Simultaneous read-only access
@@ -144,7 +144,8 @@ class shared_state_details {
  *       // The timeout is set when instanciating shared_state<A>.
  *    }
  *
- *    auto w(a, no_lock_failed()); // Returns immediately without waiting.
+ *    shared_state<A>::write_ptr w{a, no_lock_failed()};
+ *                      // Returns immediately without waiting.
  *    if (w) w->foo();  // Only lock for access if readily availaible (i.e
  *                      // currently not locked by any other thread)
  *
@@ -167,7 +168,7 @@ class shared_state_details {
  *     p.read()->...
  *
  * or
- *     shared_state<MyType>::read_ptr r(p);
+ *     shared_state<MyType>::read_ptr r{p};
  *     r->...
  *     r->...
  *
@@ -177,14 +178,14 @@ class shared_state_details {
  *     p.write()->...
  *
  * or
- *     shared_state<MyType>::write_ptr w(p);
+ *     shared_state<MyType>::write_ptr w{p};
  *     w->...
  *     w->...
  *
  *
  * 3. Non thread-safe mutable state
  *
- *     shared_state<MyType>::shared_mutable_state m(p);
+ *     shared_state<MyType>::shared_mutable_state m{p};
  *     m->...
  *     m->...
  *
@@ -280,7 +281,7 @@ public:
         if (yp)
         {
             p.reset (yp);
-            d.reset (new details(typename shared_state_traits_helper< Y >::type()));
+            d.reset (new details{typename shared_state_traits_helper< Y >::type()});
         }
         else
         {
@@ -309,7 +310,7 @@ public:
             if (pp && datap)
                 return shared_state(pp, datap);
 
-            return shared_state(std::shared_ptr<T>(), std::shared_ptr<details>());
+            return shared_state{std::shared_ptr<T>(), std::shared_ptr<details>()};
         }
 
     private:
@@ -437,7 +438,7 @@ public:
                 l.lock_shared ();
                 // Got lock
             }
-            else if (l.try_lock_shared_for (boost::chrono::milliseconds(timeout_ms)))
+            else if (l.try_lock_shared_for (boost::chrono::milliseconds{timeout_ms}))
             {
                 // Got lock
             }
@@ -445,13 +446,13 @@ public:
             {
                 // If this is a deadlock, make both threads throw by keeping this thread blocked.
                 // See lock_failed::try_again
-                bool try_again = l.try_lock_shared_for (boost::chrono::milliseconds(timeout_ms));
+                bool try_again = l.try_lock_shared_for (boost::chrono::milliseconds{timeout_ms});
                 if (try_again)
                     l.unlock_shared ();
 
-                SHARED_STATE_THROW_EXCEPTION(lock_failed()
-                                      << typename lock_failed::timeout_value(timeout_ms)
-                                      << typename lock_failed::try_again_value(try_again));
+                SHARED_STATE_THROW_EXCEPTION(lock_failed{}
+                                      << typename lock_failed::timeout_value{timeout_ms}
+                                      << typename lock_failed::try_again_value{try_again});
             }
 
             if (0<d->verify_execution_time_ms)
@@ -549,18 +550,18 @@ public:
             {
                 l.lock ();
             }
-            else if (l.try_lock_for (boost::chrono::milliseconds(timeout_ms)))
+            else if (l.try_lock_for (boost::chrono::milliseconds{timeout_ms}))
             {
             }
             else
             {
-                bool try_again = l.try_lock_for (boost::chrono::milliseconds(timeout_ms));
+                bool try_again = l.try_lock_for (boost::chrono::milliseconds{timeout_ms});
                 if (try_again)
                     l.unlock ();
 
-                SHARED_STATE_THROW_EXCEPTION(lock_failed()
-                                      << typename lock_failed::timeout_value(timeout_ms)
-                                      << typename lock_failed::try_again_value(try_again));
+                SHARED_STATE_THROW_EXCEPTION(lock_failed{}
+                                      << typename lock_failed::timeout_value{timeout_ms}
+                                      << typename lock_failed::try_again_value{try_again});
             }
 
             if (0<d->verify_execution_time_ms)
