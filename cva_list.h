@@ -13,7 +13,11 @@
 	clr:pure).
 */
 
+#ifdef _MSC_VER
 #define Cva_start(name, argument) Cva_list name; va_start((va_list)name,argument);
+#else
+#define Cva_start(name, argument) Cva_list name; va_start(name,argument);
+#endif
 
 class Cva_list
 {

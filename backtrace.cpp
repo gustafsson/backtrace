@@ -343,11 +343,6 @@ void Backtrace::
             string s = diagnostic_information(x);
 
             try {
-                bool debug = false;
-                #ifdef _DEBUG
-                    debug = true;
-                #endif
-
 #ifdef _MSC_VER
                 EXCEPTION_ASSERTX( s.find ("throwfunction") != string::npos, s );
                 EXCEPTION_ASSERTX( s.find ("backtrace.cpp(301)") != string::npos, s );
