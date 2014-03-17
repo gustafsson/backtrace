@@ -75,6 +75,9 @@ void Timer::
     // (at least 0.1-millisecond resolution)
     {
         TRACE_PERF("it should measure short intervals as short");
+
+        trace_perf_.reset ("it should have a low overhead");
+
         {Timer t;t.elapsed ();}
     }
 
@@ -82,16 +85,16 @@ void Timer::
     // 'release' build (inacive in the sense that an instance is created but no
     // method is called).
     {
-        TRACE_PERF("it should have a low overhead 100000");
+        TRACE_PERF("it should have a low overhead 10000");
 
-        for (int i=0;i<100000;i++) {
+        for (int i=0;i<10000;i++) {
             Timer t0;
             t0.elapsed ();
         }
 
-        trace_perf_.reset ("it should produce stable measures 100000");
+        trace_perf_.reset ("it should produce stable measures 10000");
 
-        for (int i=0;i<100000;i++) {
+        for (int i=0;i<10000;i++) {
             Timer t0;
             t0.elapsed ();
         }

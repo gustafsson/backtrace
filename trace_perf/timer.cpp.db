@@ -1,8 +1,12 @@
 it should measure short intervals as short
 2e-06
-
-it should have a low overhead 100000
-0.07
-
-it should produce stable measures 100000
-0.07
+--- smallest possible measure
+it should have a low overhead
+4e-06
+--- The time it takes to create a timer, check elapsed and destroy it. As measured with a timer.
+it should have a low overhead 10000
+0.02
+--- unit: 100 microseconds
+it should produce stable measures 10000
+0.02
+--- unit: 100 microseconds
