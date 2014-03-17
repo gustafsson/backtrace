@@ -8,3 +8,4 @@ x64
 *.vcxproj.filters
 .depend
 trace_perf/dump
+trace_perf/summary
