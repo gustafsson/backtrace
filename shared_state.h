@@ -187,7 +187,7 @@ struct disable_if<true,T> {
  *       void baz() volatile;
  *    };
  *
- *    shared_state<A> a{new A}; // Smart pointer that makes its data safe to use
+ *    shared_state<A> a{new A}; // Smart pointer that make its data safe to use
  *                              // in multiple threads.
  *    a.write()->foo();         // Mutally exclusive write access
  *    a.read()->bar();          // Shared read-only access
@@ -198,9 +198,15 @@ struct disable_if<true,T> {
  *    a->foo();        <-- error  // un-safe method call fails in compile time, foo is non-volatile
  *
  *    {
- *        auto w = a.write();   // Keep a lock for consecutive calls
+ *        auto w = a.write();   // Wait for lock and enter a critical section
  *        w->foo();
  *        w->bar();
+ *        // exit early with w.unlock or let w go out-of-scope
+ *    }
+ *
+ *    if (auto w = a.try_write())   // Conditional critical section, don't wait for lock
+ *    {
+ *        w->foo();
  *    }
  *
  *    try {
@@ -399,6 +405,7 @@ public:
         T* operator-> () const { return px; }
         T& operator* () const { return *px; }
         T* get () const { return px; }
+        explicit operator bool() const { return px; }
 
     private:
         std::shared_ptr<volatile T> p;
@@ -442,6 +449,7 @@ public:
         const T* operator-> () const { return px; }
         const T& operator* () const { return *px; }
         const T* get () const { return px; }
+        explicit operator bool() const { return px; }
 
         void unlock() {
             if (px)
@@ -553,7 +561,7 @@ public:
         T* operator-> () const { return px; }
         T& operator* () const { return *px; }
         T* get () const { return px; }
-        shared_state getPtr () const { return p; }
+        explicit operator bool() const { return px; }
 
         void unlock() {
             if (px)

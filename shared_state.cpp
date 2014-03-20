@@ -230,8 +230,14 @@ void shared_state_test::
     // error: no matching function for call to 'shared_state<A>::write_ptr::write_ptr (shared_state<A>::ConstPtr)'
     // A::write_ptr (consta)->a ();
 
+    // Conditional critical section, don't wait if the lock is not available
+    if (auto w = mya.try_write ())
     {
-        // Bad practice
+        w->method (5);
+    }
+
+    {
+        // Example of bad practice
         // Assume 'a ()' is const and doesn't have any other side effects.
 
         int sum = 0;
@@ -247,7 +253,7 @@ void shared_state_test::
     }
 
     {
-        // Good practice
+        // Example of good practice
 
         auto r = mya.read (); // Lock the data you need before you start using it.
         int sum = 0;
