@@ -189,7 +189,7 @@ struct disable_if<true,T> {
  *
  *    shared_state<A> a{new A}; // Smart pointer that make its data safe to use
  *                              // in multiple threads.
- *    a.write()->foo();         // Mutally exclusive write access
+ *    a.write()->foo();         // Mutually exclusive write access
  *    a.read()->bar();          // Shared read-only access
  *    a->baz();                 // use the volailte qualifier to denote thread-
  *                              // safe method that doesn't require a lock
@@ -245,7 +245,7 @@ struct disable_if<true,T> {
  *     r->...
  *
  *
- * 2. Thread-safe and exception-safe mutally exclusive read and write access
+ * 2. Thread-safe and exception-safe mutually exclusive read and write access
  *
  *     p.write()->...
  *
