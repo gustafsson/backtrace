@@ -183,7 +183,7 @@ void shared_state_test::
 
     {
         // Lock for write access
-        A::write_ptr w {mya};
+        auto w = mya.write ();
         w->method (5);
         A& b = *w;
         b.method (5);
@@ -191,12 +191,11 @@ void shared_state_test::
     }
 
     // Lock for a single call
-    A::write_ptr (mya)->method (5);
     mya.write()->method (5);
 
     {
         // Lock for read access
-        A::read_ptr r {mya};
+        auto r = mya.read ();
         EXCEPTION_ASSERT_EQUALS (r->const_method (), 5);
         const A& b = *r;
         EXCEPTION_ASSERT_EQUALS (b.const_method (), 5);
@@ -209,7 +208,6 @@ void shared_state_test::
     }
 
     // Lock for a single call
-    A::read_ptr (mya)->const_method ();
     mya.read ()->const_method ();
 
     // Can call volatile methods
@@ -222,7 +220,8 @@ void shared_state_test::
     consta->consttest ();
 
     // Can get read-only access from a ConstPtr.
-    A::read_ptr (consta)->const_method ();
+    consta.read ()->const_method ();
+    // consta.write (); // error: no matching member function for call to 'write'
 
     // Can get unsafe access without locks using a shared_mutable_state
     shared_state<A>::shared_mutable_state (mya)->method (1);
@@ -250,7 +249,7 @@ void shared_state_test::
     {
         // Good practice
 
-        A::read_ptr r {mya}; // Lock the data you need before you start using it.
+        auto r = mya.read (); // Lock the data you need before you start using it.
         int sum = 0;
         sum += r->const_method ();
         sum += r->const_method ();
@@ -274,7 +273,7 @@ void shared_state_test::
         // instance before you start using it. This requires a user specified
         // copy that ignores any values of shared_state.
 
-        const A mylocal_a = *A::read_ptr {mya};
+        const A mylocal_a = *mya.read ();
         int sum = 0;
         sum += mylocal_a.const_method ();
         sum += mylocal_a.const_method ();
@@ -289,9 +288,9 @@ void shared_state_test::
         // consumers). This requires user specified assignment that ignores
         // any values of shared_state.
 
-        A mylocal_a = *A::read_ptr {mya}; // Produce a writable copy
+        A mylocal_a = *mya.read (); // Produce a writable copy
         mylocal_a.method (5);
-        *A::write_ptr {mya} = mylocal_a;
+        *mya.write () = mylocal_a;
 
         // This will not be as easy with multiple producers as you need to
         // manage merging.
@@ -326,14 +325,14 @@ void shared_state_test::
     // It should be accessible from various pointer types
     {
         const A::ptr mya1{new A};
-        A::read_ptr{mya1};
+        mya1.read ();
         // A::write_ptr{mya1}; // Cant write to a const shared_state
 
         A::const_ptr mya2{new A};
-        A::read_ptr{mya2};
+        mya2.read ();
 
-        A::read_ptr{A::ptr{new A}};
-        A::write_ptr{A::ptr{new A}};
+        A::ptr{new A}.read ();
+        A::ptr{new A}.write ();
     }
 
     // shared_state can be used in a map.
@@ -366,8 +365,8 @@ void shared_state_test::
         TRACE_PERF("shared_state should cause a low default overhead");
         for (int i=0; i<N; i++)
         {
-            shared_state<C>::write_ptr{c};
-            shared_state<C>::read_ptr{c};
+            c.write ();
+            c.read ();
         }
     }
 
@@ -386,8 +385,8 @@ void shared_state_test::
         trace_perf_.reset("shared_state should cause a low overhead without verify_execution_time_ms");
         for (int i=0; i<N; i++)
         {
-            A::write_ptr{a2}->noinlinecall();
-            A::read_ptr{a2}->noinlinecall();
+            a2.write ()->noinlinecall();
+            a2.read ()->noinlinecall();
         }
     }
 
@@ -404,18 +403,18 @@ void shared_state_test::
         with_timeout_0::const_ptr consta{a};
 
         // Make subsequent lock attempts fail
-        with_timeout_0::write_ptr r{a};
+        with_timeout_0::write_ptr r = a.write ();
 
         TRACE_PERF("shared_state should fail fast with no_lock_failed");
         for (int i=0; i<N; i++) {
-            with_timeout_0::write_ptr{a,no_lock_failed()};
-            with_timeout_0::read_ptr{a,no_lock_failed()};
-            with_timeout_0::read_ptr{consta,no_lock_failed()};
+            a.try_write ();
+            a.try_read ();
+            consta.try_read ();
         }
 
         trace_perf_.reset("shared_state should fail fast with timeout=0");
         for (int i=0; i<N; i++) {
-            EXPECT_EXCEPTION(lock_failed, with_timeout_0::write_ptr w{a});
+            EXPECT_EXCEPTION(lock_failed, a.write ());
         }
     }
 
@@ -499,7 +498,7 @@ void WriteWhileReadingThread::
 
 #ifndef SHARED_STATE_NO_TIMEOUT
     // Write access should fail as the first thread attempts a recursive read_ptr.
-    EXPECT_EXCEPTION(lock_failed, B::write_ptr{b}; );
+    EXPECT_EXCEPTION(lock_failed, b.write (); );
 #else
     // Only happens if lock timeout is enabled
     B::write_ptr{b};
@@ -510,8 +509,8 @@ void WriteWhileReadingThread::
 void readTwice(B::ptr b) {
     // int i = b.read()->work_a_lot(1) + b.read()->work_a_lot(2);
     // faster than default timeout
-    int i = B::read_ptr{b}->work_a_lot(3)
-            + B::read_ptr{b}->work_a_lot(4);
+    int i = b.read ()->work_a_lot(3)
+            + b.read ()->work_a_lot(4);
     (void) i;
 }
 
@@ -519,8 +518,8 @@ void readTwice(B::ptr b) {
 void writeTwice(B::ptr b) {
     // int i = b.write()->work_a_lot(3) + b.write()->work_a_lot(4);
     // faster than default timeout
-    int i = B::write_ptr{b}->work_a_lot(1)
-            + B::write_ptr{b}->work_a_lot(2);
+    int i = b.write ()->work_a_lot(1)
+            + b.write ()->work_a_lot(2);
     (void) i;
 }
 
@@ -534,11 +533,11 @@ public:
     void operator()() {
         try {
 
-            with_timeout_2_without_verify::write_ptr aw{a};
+            auto aw = a.write ();
             this_thread::sleep_for (chrono::milliseconds{1});
-            with_timeout_2_without_verify::write_ptr bw{b};
+            auto bw = b.write ();
 
-        } catch (const with_timeout_2_without_verify::ptr::lock_failed& x) {
+        } catch (lock_failed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
             EXCEPTION_ASSERT(backtrace);
         }
@@ -584,11 +583,11 @@ void WriteWhileReadingThread::
 
         try {
 
-            with_timeout_2_without_verify::write_ptr bw{b};
+            auto bw = b.write ();
             this_thread::sleep_for (chrono::milliseconds{1});
-            with_timeout_2_without_verify::write_ptr aw{a};
+            auto aw = a.write ();
 
-        } catch (const with_timeout_2_without_verify::ptr::lock_failed& x) {
+        } catch (lock_failed& x) {
             const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
             EXCEPTION_ASSERT(backtrace);
         }
@@ -604,7 +603,7 @@ void WriteWhileReadingThread::
         bool did_report = false;
 
         VerifyExecutionTime::set_default_report ([&did_report](float, float){ did_report = true; });
-        shared_state<with_timeout_1_and_verify_1>::write_ptr w{a};
+        auto w = a.write ();
         VerifyExecutionTime::set_default_report (0);
 
         this_thread::sleep_for (chrono::milliseconds{10});

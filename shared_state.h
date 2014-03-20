@@ -159,6 +159,16 @@ class shared_state_details {
 };
 
 
+template <bool B, typename T = void>
+struct disable_if {
+    typedef T type;
+};
+
+template <typename T>
+struct disable_if<true,T> {
+};
+
+
 /**
  * The shared_state class is a smart pointer that should guarantee thread-safe
  * access to objects, with
@@ -412,41 +422,6 @@ public:
      */
     class read_ptr {
     public:
-        template<class Y,
-                 class = typename std::enable_if <std::is_convertible<Y*, const element_type*>::value>::type>
-        explicit read_ptr (const shared_state<Y>& vp)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d),
-                px (const_cast<const T*> (vp.get ()))
-        {
-            lock ();
-        }
-
-        /**
-         * @brief read_ptr with no_lock_failed obtains the lock if it is readily
-         * available. If the lock was not obtained it doesn't throw any
-         * exception, but the accessors returns a null pointer. This function
-         * fails much faster than setting timeout_ms=0 and discarding any
-         * lock_failed.
-         */
-        template<class Y,
-                 class = typename std::enable_if <std::is_convertible<Y*, const element_type*>::value>::type>
-        read_ptr (const shared_state<Y>& vp, no_lock_failed)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d),
-                px (const_cast<const T*> (p.get ()))
-        {
-            if (!l.try_lock_shared ())
-                px = 0;
-            else
-            {
-                if (0<d->verify_execution_time_ms)
-                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
-            }
-        }
-
         read_ptr(read_ptr&& b)
             :   l (b.l),
                 px (b.px)
@@ -479,6 +454,32 @@ public:
         }
 
     private:
+        friend class shared_state;
+
+        explicit read_ptr (const shared_state& vp)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                px (const_cast<const T*> (vp.get ()))
+        {
+            lock ();
+        }
+
+        read_ptr (const shared_state& vp, no_lock_failed)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                px (const_cast<const T*> (p.get ()))
+        {
+            if (!l.try_lock_shared ())
+                px = 0;
+            else
+            {
+                if (0<d->verify_execution_time_ms)
+                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
+            }
+        }
+
         void lock() {
             int timeout_ms = d->timeout_ms; // l is not locked, but timeout_ms is const
 
@@ -533,35 +534,6 @@ public:
      */
     class write_ptr {
     public:
-        template<class Y,
-                 class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
-        explicit write_ptr (shared_state<Y> vp)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d),
-                px (const_cast<T*> (p.get ()))
-        {
-            lock ();
-        }
-
-        // See read_ptr(const read_ptr&, no_lock_failed)
-        template<class Y,
-                 class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
-        write_ptr (shared_state<Y> vp, no_lock_failed)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d),
-                px (const_cast<T*> (p.get ()))
-        {
-            if (!l.try_lock ())
-                px = 0;
-            else
-            {
-                if (0<d->verify_execution_time_ms)
-                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
-            }
-        }
-
         write_ptr(write_ptr&& b)
             :   l (b.l),
                 px (b.px)
@@ -594,6 +566,32 @@ public:
         }
 
     private:
+        friend class shared_state;
+
+        explicit write_ptr (const shared_state& vp)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                px (const_cast<T*> (p.get ()))
+        {
+            lock ();
+        }
+
+        write_ptr (const shared_state& vp, no_lock_failed)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                px (const_cast<T*> (p.get ()))
+        {
+            if (!l.try_lock ())
+                px = 0;
+            else
+            {
+                if (0<d->verify_execution_time_ms)
+                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
+            }
+        }
+
         // See read_ptr::lock
         void lock() {
             int timeout_ms = d->timeout_ms;
@@ -631,11 +629,35 @@ public:
     };
 
 
+    /**
+     * @brief read provides thread safe read-only access.
+     */
     read_ptr read() const volatile { return read_ptr(*const_cast<const shared_state*>(this)); }
+
+    /**
+     * @brief write provides thread safe read and write access. Not accessible
+     * if T is const.
+     */
+    template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
     write_ptr write() volatile { return write_ptr(*const_cast<shared_state*>(this)); }
 
     /**
-     * @brief readWriteLock returns the shared_state_mutex object for this instance.
+     * @brief try_read obtains the lock only if it is readily available.
+     *
+     * If the lock was not obtained it doesn't throw any exception, but the
+     * accessors return null pointers. This function fails much faster (about
+     * 30x faster) than setting timeout_ms=0 and discarding any lock_failed.
+     */
+    read_ptr try_read() const volatile { return read_ptr(*const_cast<const shared_state*>(this), no_lock_failed()); }
+
+    /**
+     * @brief try_write. See try_read.
+     */
+    template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
+    write_ptr try_write() volatile { return write_ptr(*const_cast<shared_state*>(this), no_lock_failed()); }
+
+    /**
+     * @brief readWriteLock returns the mutex object for this instance.
      */
     shared_state_mutex& readWriteLock() const volatile { return (*const_cast<std::shared_ptr<details>*>(&d))->lock; }
 
