@@ -240,7 +240,7 @@ struct disable_if<true,T> {
  *     p.read()->...
  *
  * or
- *     shared_state<MyType>::read_ptr r{p};
+ *     auto r = p.read();
  *     r->...
  *     r->...
  *
@@ -250,7 +250,7 @@ struct disable_if<true,T> {
  *     p.write()->...
  *
  * or
- *     shared_state<MyType>::write_ptr w{p};
+ *     auto w = p.write();
  *     w->...
  *     w->...
  *
@@ -322,7 +322,7 @@ public:
     shared_state () {}
 
     /**
-     * If 'timeout_ms >= 0' read_ptr/write_ptr will try to look until the timeout
+     * If 'timeout_ms >= 0' read_ptr/write_ptr will try to lock until the timeout
      * has passed and then throw a lock_failed exception. If 'timeout_ms < 0'
      * they will block indefinitely until the lock becomes available.
      *

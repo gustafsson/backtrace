@@ -52,8 +52,6 @@ class A
 public:
     typedef shared_state<A> ptr;
     typedef shared_state<const A> const_ptr;
-    typedef ptr::read_ptr read_ptr;
-    typedef ptr::write_ptr write_ptr;
 
     A () {}
     A (const A& b) { *this = b; }
@@ -94,8 +92,6 @@ public:
     };
 
     typedef shared_state<B> ptr;
-    typedef ptr::read_ptr read_ptr;
-    typedef ptr::write_ptr write_ptr;
 
     int work_a_lot(int i) const;
 };
@@ -109,8 +105,6 @@ class with_timeout_0
 public:
     typedef shared_state<with_timeout_0> ptr;
     typedef shared_state<const with_timeout_0> const_ptr;
-    typedef ptr::read_ptr read_ptr;
-    typedef ptr::write_ptr write_ptr;
 };
 
 
@@ -127,7 +121,6 @@ class with_timeout_2_without_verify
 {
 public:
     typedef shared_state<with_timeout_2_without_verify> ptr;
-    typedef ptr::write_ptr write_ptr;
 };
 
 
@@ -200,7 +193,7 @@ void shared_state_test::
         const A& b = *r;
         EXCEPTION_ASSERT_EQUALS (b.const_method (), 5);
 
-        // can't write to mya with read_ptr
+        // can't write to mya with the read_ptr from .read()
         // error: passing 'const A' as 'this' argument of 'void A::a (int)' discards qualifiers
         // r->a (5);
 
@@ -213,22 +206,20 @@ void shared_state_test::
     // Can call volatile methods
     mya->volatile_member_method ();
 
-    // Create a volatile reference to a const instance
+    // Create a reference to a const instance
     A::const_ptr consta (mya);
 
-    // Can call volatile const methods from a ConstPtr
+    // Can call volatile const methods from a const_ptr
     consta->consttest ();
 
-    // Can get read-only access from a ConstPtr.
+    // Can get read-only access from a const_ptr.
     consta.read ()->const_method ();
-    // consta.write (); // error: no matching member function for call to 'write'
 
     // Can get unsafe access without locks using a shared_mutable_state
     shared_state<A>::shared_mutable_state (mya)->method (1);
 
-    // Can not create a write_ptr to a const pointer.
-    // error: no matching function for call to 'shared_state<A>::write_ptr::write_ptr (shared_state<A>::ConstPtr)'
-    // A::write_ptr (consta)->a ();
+    // Can not get write access to a const pointer.
+    // consta.write (); // error: no matching member function for call to 'write'
 
     // Conditional critical section, don't wait if the lock is not available
     if (auto w = mya.try_write ())
@@ -246,7 +237,7 @@ void shared_state_test::
 
         // A common assumption here would be that const_method () returns the
         // same result twice. But this is NOT guaranteed. Another thread might
-        // change 'mya' with a write_ptr between the two calls.
+        // change 'mya' with a .write() between the two calls.
         //
         // In general, using multiple .read() is a smell that you're doing it
         // wrong.
@@ -266,10 +257,10 @@ void shared_state_test::
     }
 
     // The differences in the bad and good practices illustrated above is
-    // especially important for write_ptr that might modify an object in
+    // especially important for write() that might modify an object in
     // several steps where snapshots of intermediate steps would describe
-    // inconsistent states. Using inconsistent states results in undefined
-    // behaviour (i.e crashes, or worse).
+    // inconsistent states. Using inconsistent states in general results in
+    // undefined behaviour (i.e crashes, or worse).
 
     // However, long routines might be blocking for longer than preferred.
 
@@ -302,37 +293,38 @@ void shared_state_test::
         // manage merging.
         //
         // The easiest solution for multiple producers is the version proposed
-        // in the beginning were the write_ptr is kept throughout the scope of
-        // the work.
+        // in the beginning were the write_ptr from .write() is kept throughout
+        // the scope of the work.
     }
 
 
     // An explanation of inline locks, or one-line locks, or locks for a single call.
     //
     // One-line locks are kept until the complete statement has been executed.
-    // The destructor of A::write_ptr releases the lock when the instance goes
-    // out-of-scope. Because the scope in which A::write_ptr is created is a
+    // The destructor of write_ptr releases the lock when the instance goes
+    // out-of-scope. Because the scope in which write_ptr is created is a
     // statement, the lock is released after the entire statement has finished
     // executing.
     //
     // So this example would create a deadlock.
-    // int deadlock = A::write_ptr (mya)->a () + A::write_ptr (mya)->a ();
+    //     int deadlock = mya->write ()->a () + mya->write ()->a ();
     //
-    // The following statement will ALSO create a deadlock if another thread
-    // requests an A::write_ptr after the first read_ptr is obtained but before
-    // the second read_ptr is obtained (because the first read_ptr is not
-    // released until the entire statement is finished):
-    // int deadlock = A::read_ptr (mya)->a () + A::read_ptr (mya)->a ();
+    // The following statement may ALSO create a deadlock if another thread
+    // requests a write() after the first read() has returned but before the
+    // second read() (because read_ptr from the first read() doesn't go out of
+    // scope and release its lock until the entire statement is finished):
+    //     int potential_deadlock = mya->read ()->a () + mya->read ()->a ();
     //
-    // Rule of thumb; avoid locking more than one object at a time, and avoid
-    // locking the same object more than once at a time.
+    //
+    // Rule of thumb; avoid locking more than one object at a time, and never
+    // lock the same object more than once at a time.
     WriteWhileReadingThread::test ();
 
     // It should be accessible from various pointer types
     {
         const A::ptr mya1{new A};
         mya1.read ();
-        // A::write_ptr{mya1}; // Cant write to a const shared_state
+        // mya1.write (); // Can't write to a const shared_state
 
         A::const_ptr mya2{new A};
         mya2.read ();
@@ -341,7 +333,7 @@ void shared_state_test::
         A::ptr{new A}.write ();
     }
 
-    // shared_state can be used in a map.
+    // shared_state can be used in a sorted container.
     {
         map<A::ptr, int> mymap;
         mymap.find (A::ptr{});
@@ -409,7 +401,7 @@ void shared_state_test::
         with_timeout_0::const_ptr consta{a};
 
         // Make subsequent lock attempts fail
-        with_timeout_0::write_ptr r = a.write ();
+        with_timeout_0::ptr::write_ptr r = a.write ();
 
         TRACE_PERF("shared_state should fail fast with no_lock_failed");
         for (int i=0; i<N; i++) {
@@ -423,22 +415,6 @@ void shared_state_test::
             EXPECT_EXCEPTION(lock_failed, a.write ());
         }
     }
-
-
-    // More thoughts on design decisions
-    // shared_state provides two short methods read() and write(). They are a
-    // bit controversial as they are likely to lead to inconsistent coding
-    // styles when mixing the two versions.
-    //  sum += mya.read ()->a ()
-    //  sum += A::read_ptr (mya)->a ()
-    // The latter is more explicit which in this case is good to emphasize that
-    // a wrapper object is being constructed to manage access. It's also
-    // generic enough to be used as the only way to lock an object.
-    //
-    // On the other hand, read() and write() effectively apply to the concept that
-    // locks should only be kept for a short while.
-    //
-    // multiple read() and write() in the same function are bad smells.
 }
 
 
@@ -503,11 +479,12 @@ void WriteWhileReadingThread::
     this_thread::sleep_for (chrono::milliseconds{1});
 
 #ifndef SHARED_STATE_NO_TIMEOUT
-    // Write access should fail as the first thread attempts a recursive read_ptr.
+    // Write access should fail as the first thread attempts recursive locks
+    // through multiple calls to read ().
     EXPECT_EXCEPTION(lock_failed, b.write (); );
 #else
     // Only happens if lock timeout is enabled
-    B::write_ptr{b};
+    b.write ();
 #endif
 }
 
