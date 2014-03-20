@@ -1,12 +1,21 @@
 #include "trace_perf.h"
 #include "detectgdb.h"
-#include <boost/filesystem.hpp>
 
 #include <vector>
 #include <fstream>
 #include <map>
 #include <algorithm>
+#include <sstream>
+#include <iostream>
 
+#include <sys/stat.h>
+
+#ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h> // gethostname
+#else
+#include <unistd.h> // gethostname
+#endif
 
 bool PRINT_ATTEMPTED_DATABASE_FILES = true;
 
@@ -58,7 +67,7 @@ void performance_traces::
     map<string, double> db;
 
     vector<string> dbnames = get_database_names(sourcefilename);
-    for (int i=0; i<dbnames.size (); i++)
+    for (unsigned i=0; i<dbnames.size (); i++)
         read_database(db, dbnames[i]);
 
     if (db.empty ())
@@ -107,7 +116,7 @@ void performance_traces::
         compare_to_db(map<string, double> &db, const vector<Entry>& entries, string sourcefilename)
 {
     bool expected_miss = false;
-    for (int i=0; i<entries.size (); i++)
+    for (unsigned i=0; i<entries.size (); i++)
     {
         string info = entries[i].info;
         double elapsed = entries[i].elapsed;
@@ -127,7 +136,7 @@ void performance_traces::
                 cout << endl << sourcefilename << " wasn't fast enough ..." << endl;
                 if (PRINT_ATTEMPTED_DATABASE_FILES) {
                     vector<string> dbnames = get_database_names(sourcefilename);
-                    for (int i=0; i<dbnames.size (); i++)
+                    for (unsigned i=0; i<dbnames.size (); i++)
                         cout << dbnames[i] << endl;
                 }
             }
@@ -155,8 +164,13 @@ void performance_traces::
 void performance_traces::
         dump_entries(const vector<Entry>& entries, string sourcefilaname)
 {
-    boost::filesystem::create_directory("trace_perf");
-    boost::filesystem::create_directory("trace_perf/dump");
+    // requires boost_filesystem
+    //boost::filesystem::create_directory("trace_perf");
+    //boost::filesystem::create_directory("trace_perf/dump");
+
+    // require posix
+    mkdir("trace_perf", S_IRWXU|S_IRGRP|S_IXGRP);
+    mkdir("trace_perf/dump", S_IRWXU|S_IRGRP|S_IXGRP);
 
     int i=0;
     string filename;
@@ -174,7 +188,7 @@ void performance_traces::
     if (!o)
         cout << "Couldn't dump performance entries to " << filename << endl;
 
-    for (int i=0; i<entries.size (); i++)
+    for (unsigned i=0; i<entries.size (); i++)
     {
         if (0 < i)
             o << endl;
@@ -233,7 +247,7 @@ vector<string> performance_traces::
     for (int i=0; i<(1 << config.size ()); i++)
     {
         string perm;
-        for (int j=0; j<config.size (); j++)
+        for (unsigned j=0; j<config.size (); j++)
         {
             if ((i>>j) % 2)
                 perm += config[j];
@@ -246,7 +260,7 @@ vector<string> performance_traces::
         for (int i=0; i<n; i++)
             db.push_back (hostname + "/" + db[i]);
 
-    for (int i=0; i<db.size (); i++)
+    for (unsigned i=0; i<db.size (); i++)
         db[i] = "trace_perf/" + db[i];
 
     return db;

@@ -363,9 +363,9 @@ void Backtrace::
     #ifdef _DEBUG
                 // The call to throwfunction will be removed by optimization
                 EXCEPTION_ASSERTX( s.find ("main") != string::npos, s );
-                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:339)") != string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:341)") != string::npos, s );
     #else
-                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:339)") == string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:341)") == string::npos, s );
     #endif
 #endif
                 break;

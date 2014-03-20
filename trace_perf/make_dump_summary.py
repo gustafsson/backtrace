@@ -1,3 +1,5 @@
+#!/opt/local/bin/python
+
 from os import listdir, makedirs
 from os.path import isfile, join, exists
 import numpy

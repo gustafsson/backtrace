@@ -2,14 +2,13 @@
 
 #include "cva_list.h"
 
-#include <iostream>
-#include <time.h>
-#include <exception>
+#include <iomanip>
+#include <map>
+#include <thread>
+#include <sstream>
 
-#include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/thread/recursive_mutex.hpp>
-#include <boost/thread/thread.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 
 #ifndef _MSC_VER
 #define MICROSEC_TIMESTAMPS
@@ -26,7 +25,8 @@
 //#define TIMESTAMPS if(0)
 
 using namespace boost;
-using namespace boost::posix_time;
+using namespace std;
+
 typedef unique_lock<recursive_mutex> TaskTimerLock;
 
 
@@ -48,14 +48,14 @@ struct ThreadInfo {
 
 bool writeNextOnNewRow[3] = {false, false, false};
 TaskTimer* lastTimer[3] = {0,0,0};
-std::ostream* logLevelStream[] = {
-    logLevelStream[0] = &std::cout,  // &std::cerr,  // LogVerbose
-    logLevelStream[1] = &std::cout,
-    logLevelStream[2] = &std::cout
+ostream* logLevelStream[] = {
+    logLevelStream[0] = &cout,  // &cerr,  // LogVerbose
+    logLevelStream[1] = &cout,
+    logLevelStream[2] = &cout
 };
 
 
-std::map<thread::id,ThreadInfo> thread_info_map;
+map<thread::id,ThreadInfo> thread_info_map;
 
 static ThreadInfo& T() {
     // Assume lock is acquired.
@@ -63,7 +63,7 @@ static ThreadInfo& T() {
 
     if (!thread_info_map.count (threadid))
         thread_info_map.insert (
-                    std::pair<thread::id, ThreadInfo>(threadid,
+                    pair<thread::id, ThreadInfo>(threadid,
                     ThreadInfo((int)thread_info_map.size ())));
 
     return thread_info_map[threadid];
@@ -119,7 +119,7 @@ void TaskTimer::init(LogLevel logLevel, const char* task, va_list args) {
     this->numPartlyDone = 0;
     this->upperLevel = 0;
     this->suppressTimingInfo = false;
-    this->is_unwinding = std::uncaught_exception();
+    this->is_unwinding = uncaught_exception();
 
     while (0<logLevel) {
         if (logLevelStream[ logLevel-1 ] == logLevelStream[ logLevel ] ) {
@@ -139,14 +139,14 @@ void TaskTimer::init(LogLevel logLevel, const char* task, va_list args) {
     ++T().counter[this->logLevel];
 
     printIndentation();
-    std::vector<std::string> strs;
+    vector<string> strs;
 
     writeNextOnNewRow[this->logLevel] = true;
 
     int c = vsnprintf( 0, 0, task, Cva_list(args) );
-    std::vector<char> t( c+1 );
+    vector<char> t( c+1 );
     vsnprintf( &t[0], c+1, task, Cva_list(args) );
-    std::string s;
+    string s;
     s.append ( &t[0],&t[c] );
 
     if (strchr(s.c_str(), '\n'))
@@ -164,12 +164,7 @@ void TaskTimer::init(LogLevel logLevel, const char* task, va_list args) {
     for (unsigned i=1; i<strs.size(); i++)
         info("> %s", strs[i].c_str());
 
-    this->startTime = microsec_clock::local_time();
-#ifdef _MSC_VER
-    LARGE_INTEGER li;
-    QueryPerformanceCounter(&li);
-    this->hpcStart = li.QuadPart;
-#endif
+    timer_.restart ();
 }
 
 void TaskTimer::logprint(const char* txt) {
@@ -179,7 +174,7 @@ void TaskTimer::logprint(const char* txt) {
         *logLevelStream[ logLevel ] << txt;
 
         if (strchr(txt, '\n'))
-            *logLevelStream[ logLevel ] << std::flush;
+            *logLevelStream[ logLevel ] << flush;
     }
 }
 
@@ -217,22 +212,22 @@ bool TaskTimer::printIndentation() {
             logprint("\n");
 
         TIMESTAMPS { // Print timestamp
-            std::stringstream ss;
+            stringstream ss;
 
-            ptime now = microsec_clock::local_time();
-            time_duration t = now.time_of_day();
+            auto now = boost::posix_time::microsec_clock::local_time();
+            auto t = now.time_of_day();
 
 #ifndef MICROSEC_TIMESTAMPS
-            ss  << std::setiosflags(std::ios::fixed)
-                << std::setfill('0') << std::setw(2)
-                << t.hours() << ":" << std::setw(2) << t.minutes() << ":"
-                << std::setprecision(3) << std::setw(6)
+            ss  << setiosflags(ios::fixed)
+                << setfill('0') << setw(2)
+                << t.hours() << ":" << setw(2) << t.minutes() << ":"
+                << setprecision(3) << setw(6)
                 << t.fractional_seconds()/(float)t.ticks_per_second() + t.seconds() << " ";
 #else
-            ss  << std::setiosflags(std::ios::fixed)
-                << std::setfill('0') << std::setw(2)
-                << t.hours() << ":" << std::setw(2) << t.minutes() << ":"
-                << std::setprecision(6) << std::setw(9)
+            ss  << setiosflags(ios::fixed)
+                << setfill('0') << setw(2)
+                << t.hours() << ":" << setw(2) << t.minutes() << ":"
+                << setprecision(6) << setw(9)
                 << t.fractional_seconds()/(float)t.ticks_per_second() + t.seconds() << " ";
 #endif
 
@@ -240,7 +235,7 @@ bool TaskTimer::printIndentation() {
         }
 
         THREADNUMBERS { // Print thread numbers
-            std::stringstream ss;
+            stringstream ss;
 
             int width = 1;
             int N = thread_info_map.size ();
@@ -250,14 +245,14 @@ bool TaskTimer::printIndentation() {
                 width++;
 
             if (number > 0)
-                ss  << std::setfill(' ') << std::setw(width)
+                ss  << setfill(' ') << setw(width)
                     << number << " ";
             else
-                ss  << std::setfill(' ') << std::setw(width)
+                ss  << setfill(' ') << setw(width)
                     << "" << " ";
 
             // different columns
-            ss << std::setfill(' ') << std::setw (number*thread_column_width) << "";
+            ss << setfill(' ') << setw (number*thread_column_width) << "";
 
             logprint( ss.str ().c_str () );
         }
@@ -301,7 +296,7 @@ void TaskTimer::partlyDone() {
     writeNextOnNewRow[logLevel] = true;
 
     if (0 != logLevelStream[ logLevel ])
-        *logLevelStream[ logLevel ] << std::flush;
+        *logLevelStream[ logLevel ] << flush;
 
     // for all public methods, do the same action for the parent TaskTimer
     if (0 != upperLevel) {
@@ -312,20 +307,7 @@ void TaskTimer::partlyDone() {
 
 double TaskTimer::elapsedTime()
 {
-#ifdef _MSC_VER
-    LARGE_INTEGER li;
-    static double PCfreq = 1;
-    for(static bool doOnce=true;doOnce;doOnce=false)
-    {
-        QueryPerformanceFrequency(&li);
-        PCfreq = double(li.QuadPart);
-    }
-    QueryPerformanceCounter(&li);
-    return double(li.QuadPart-hpcStart)/PCfreq;
-#else
-    time_duration diff = microsec_clock::local_time() - startTime;
-    return diff.total_microseconds() * 1e-6;
-#endif
+    return timer_.elapsed();
 }
 
 
@@ -333,10 +315,9 @@ TaskTimer::~TaskTimer() {
     if (DISABLE_TASKTIMER)
         return;
 
-    TaskTimerLock scope(staticLock);
+    double diff = elapsedTime();
 
-    double d = elapsedTime();
-    time_duration diff = microseconds((int)(d*1e6 + 0.5));
+    TaskTimerLock scope(staticLock);
 
     bool didIdent = printIndentation();
 
@@ -344,8 +325,8 @@ TaskTimer::~TaskTimer() {
 //		logprintf(": ");
     }
 
-    bool exception_message = !is_unwinding && std::uncaught_exception();
-    std::string finish_message = exception_message ? "aborted, exception thrown" : "done";
+    bool exception_message = !is_unwinding && uncaught_exception();
+    string finish_message = exception_message ? "aborted, exception thrown" : "done";
 
     if (!suppressTimingInfo) {
         finish_message += exception_message ? " after" : " in";
@@ -398,7 +379,7 @@ TaskTimer::~TaskTimer() {
     }
 }
 
-void TaskTimer::setLogLevelStream( LogLevel logLevel, std::ostream* str ) {
+void TaskTimer::setLogLevelStream( LogLevel logLevel, ostream* str ) {
     TaskTimerLock scope(staticLock);
 
     switch (logLevel) {
@@ -409,7 +390,7 @@ void TaskTimer::setLogLevelStream( LogLevel logLevel, std::ostream* str ) {
             break;
 
         default:
-            throw std::logic_error((format("Muse be one "
+            throw logic_error((format("Muse be one "
                 "of LogVerbose {%u}, LogDetailed {%u} or LogSimple {%u}.")
                 % LogVerbose % LogDetailed % LogSimple ).str());
     }
@@ -433,20 +414,20 @@ void TaskTimer::
     DISABLE_TASKTIMER = !enabled;
 }
 
-std::string TaskTimer::
-        timeToString( time_duration diff )
+string TaskTimer::
+        timeToString( double T )
 {
-//    if ( diff.total_nanoseconds()<1500 && diff.total_nanoseconds() != 1000) {
-//        return str(format("%u ns") % (unsigned)diff.total_nanoseconds()).c_str();
-//    } else
-    if (diff.total_microseconds() <1500 && diff.total_microseconds() != 1000) {
-        return str(format("%.0f us") % (float)(diff.total_nanoseconds()/1000.0f)).c_str();
-    } else if (diff.total_milliseconds() <1500 && diff.total_milliseconds() != 1000) {
-        return str(format("%.1f ms") % (float)(diff.total_microseconds()/1000.0f)).c_str();
-    } else if (diff.total_seconds()<90) {
-        return str(format("%.1f s") % (float)(diff.total_milliseconds()/1000.f)).c_str();
+    int microseconds = T*1e6 + 0.5;
+    int milliseconds = T*1e3 + 0.5;
+
+    if (microseconds < 1500 && microseconds != 1000) {
+        return str(format("%.0f us") % (T*1e6));
+    } else if (milliseconds < 1500 && milliseconds != 1000) {
+        return str(format("%.1f ms") % (T*1e3));
+    } else if (T < 90) {
+        return str(format("%.1f s") % T);
     } else {
-        return str(format("%.1f min") % (float)(diff.total_seconds()/60.f)).c_str();
+        return str(format("%.1f min") % (float)(T/60.f));
     }
 }
 

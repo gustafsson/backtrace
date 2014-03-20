@@ -2,21 +2,18 @@
 #define TIMER_H
 
 #ifndef _MSC_VER
-#include <boost/date_time/posix_time/posix_time.hpp>
+#include <chrono>
 #endif
 
 /**
- * @brief The Timer class should measure duration with a high accuracy
- * (at least 0.1-millisecond resolution).
+ * @brief The Timer class should measure duration with a high accuracy.
  *
- * It should have an overhead less than 0.8 microseconds when inactive in a
- * 'release' build (inacive in the sense that an instance is created but no
- * method is called).
+ * It should have an overhead less than 1 microsecond.
  */
 class Timer
 {
 public:
-    Timer();
+    Timer(bool start=true);
 
     void restart();
     double elapsed() const;
@@ -26,7 +23,7 @@ private:
 #ifdef _MSC_VER
     __int64 start_;
 #else
-    boost::posix_time::ptime start_;
+    std::chrono::high_resolution_clock::time_point start_;
 #endif
 
 public:

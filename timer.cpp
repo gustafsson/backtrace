@@ -2,14 +2,16 @@
 #include "trace_perf.h"
 
 #ifdef _MSC_VER
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #endif
 
-using namespace boost::posix_time;
+using namespace std::chrono;
 
-Timer::Timer()
+Timer::Timer(bool start)
 {
-    restart();
+    if (start)
+        restart();
 }
 
 
@@ -20,7 +22,7 @@ void Timer::restart()
     QueryPerformanceCounter(&li);
     start_ = li.QuadPart;
 #else
-    start_ = microsec_clock::local_time();
+    start_ = high_resolution_clock::now ();
 #endif
 }
 
@@ -38,8 +40,8 @@ double Timer::elapsed() const
     QueryPerformanceCounter(&li);
     return double(li.QuadPart-start_)/PCfreq;
 #else
-    time_duration diff = microsec_clock::local_time() - start_;
-    return diff.total_microseconds() * 1e-6;
+    duration<double> diff = high_resolution_clock::now () - start_;
+    return diff.count();
 #endif
 }
 
@@ -60,10 +62,10 @@ double Timer::elapsedAndRestart()
     start_ = now;
     return diff;
 #else
-    boost::posix_time::ptime now = microsec_clock::local_time();
-    time_duration diff = now - start_;
+    high_resolution_clock::time_point now = high_resolution_clock::now ();
+    duration<double> diff = now - start_;
     start_ = now;
-    return diff.total_microseconds() * 1e-6;
+    return diff.count ();
 #endif
 }
 
@@ -72,7 +74,6 @@ void Timer::
         test()
 {
     // It should measure duration with a high accuracy
-    // (at least 0.1-millisecond resolution)
     {
         TRACE_PERF("it should measure short intervals as short");
 
@@ -81,9 +82,7 @@ void Timer::
         {Timer t;t.elapsed ();}
     }
 
-    // It should have an overhead less than 0.8 microseconds when inactive in a
-    // 'release' build (inacive in the sense that an instance is created but no
-    // method is called).
+    // It should have an overhead less than 1 microsecond
     {
         TRACE_PERF("it should have a low overhead 10000");
 

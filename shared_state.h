@@ -10,8 +10,8 @@
 
 #include "verifyexecutiontime.h"
 
-#include <boost/thread/shared_mutex.hpp>
-#include <boost/exception/all.hpp>
+#include <boost/exception/exception.hpp>
+
 
 #ifndef SHARED_STATE_THROW_EXCEPTION
   #ifdef SHARED_STATE_NO_BACKTRACE
@@ -21,6 +21,62 @@
     #define SHARED_STATE_THROW_EXCEPTION(x) BOOST_THROW_EXCEPTION(x << Backtrace::make (2))
   #endif
 #endif
+
+
+#ifdef SHARED_STATE_BOOST_MUTEX
+    #include <boost/thread/shared_mutex.hpp>
+
+    namespace shared_state_chrono = boost::chrono;
+
+    #ifdef SHARED_STATE_NO_SHARED_MUTEX
+        class shared_state_mutex: public boost::timed_mutex {
+        public:
+            // recursive read locks are allowed to dead-lock so it is valid to replace a shared_mutex with a timed_mutex
+            void lock_shared() { lock(); }
+            bool try_lock_shared() { return try_lock(); }
+#ifdef SHARED_STATE_NO_TIMEOUT
+            bool try_lock_shared_for(...) { return try_lock(); }
+#else
+            template <class Rep, class Period>
+            bool try_lock_shared_for(const shared_state_chrono::duration<Rep, Period>& rel_time) { return try_lock_for(rel_time); }
+#endif
+            void unlock_shared() { unlock(); }
+        };
+    #else
+        #ifdef SHARED_STATE_NO_TIMEOUT
+            #error Missing define: SHARED_STATE_NO_SHARED_MUTEX
+        #endif
+        typedef boost::shared_mutex shared_state_mutex;
+    #endif
+#else
+    #include <mutex>
+
+    namespace shared_state_chrono = std::chrono;
+
+    #ifdef SHARED_STATE_NO_SHARED_MUTEX
+        class shared_state_mutex: public std::timed_mutex {
+        public:
+            // recursive read locks are allowed to dead-lock so it is valid to replace a shared_mutex with a timed_mutex
+            void lock_shared() { lock(); }
+            bool try_lock_shared() { return try_lock(); }
+    #ifdef SHARED_STATE_NO_TIMEOUT
+            bool try_lock_shared_for(...) { return try_lock(); }
+    #else
+            template <class Rep, class Period>
+            bool try_lock_shared_for(const shared_state_chrono::duration<Rep, Period>& rel_time) { return try_lock_for(rel_time); }
+    #endif
+            void unlock_shared() { unlock(); }
+        };
+    #else
+        #ifdef SHARED_STATE_NO_TIMEOUT
+            #error Missing define: SHARED_STATE_NO_SHARED_MUTEX
+        #endif
+        // typedef std::shared_timed_mutex shared_state_mutex; // Requires C++14
+        #include "shared_timed_mutex_polyfill.h"
+        typedef std_polyfill::shared_timed_mutex shared_state_mutex; // Requires C++11
+    #endif
+#endif
+
 
 class no_lock_failed {};
 class lock_failed: public virtual boost::exception, public virtual std::exception {
@@ -96,7 +152,7 @@ class shared_state_details {
     shared_state_details(shared_state_details const&) = delete;
     shared_state_details& operator=(shared_state_details const&) = delete;
 
-    mutable boost::shared_mutex lock;
+    mutable shared_state_mutex lock;
     const int timeout_ms;
     const int verify_execution_time_ms;
     const VerifyExecutionTime::report report_func;
@@ -124,7 +180,7 @@ class shared_state_details {
  *    shared_state<A> a{new A}; // Smart pointer that makes its data safe to use
  *                              // in multiple threads.
  *    a.write()->foo();         // Mutally exclusive write access
- *    a.read()->bar();          // Simultaneous read-only access
+ *    a.read()->bar();          // Shared read-only access
  *    a->baz();                 // use the volailte qualifier to denote thread-
  *                              // safe method that doesn't require a lock
  *
@@ -244,7 +300,6 @@ private:
 
 public:
     typedef T element_type;
-    typedef boost::shared_mutex shared_mutex;
 
     class lock_failed: public ::lock_failed {};
 
@@ -438,7 +493,7 @@ public:
                 l.lock_shared ();
                 // Got lock
             }
-            else if (l.try_lock_shared_for (boost::chrono::milliseconds{timeout_ms}))
+            else if (l.try_lock_shared_for (shared_state_chrono::milliseconds{timeout_ms}))
             {
                 // Got lock
             }
@@ -446,7 +501,7 @@ public:
             {
                 // If this is a deadlock, make both threads throw by keeping this thread blocked.
                 // See lock_failed::try_again
-                bool try_again = l.try_lock_shared_for (boost::chrono::milliseconds{timeout_ms});
+                bool try_again = l.try_lock_shared_for (shared_state_chrono::milliseconds{timeout_ms});
                 if (try_again)
                     l.unlock_shared ();
 
@@ -459,12 +514,12 @@ public:
                 pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
         }
 
-        shared_mutex& l;
+        shared_state_mutex& l;
         // p is 'const volatile T', compared to shared_state::p which is just 'volatile T'.
         std::shared_ptr<const volatile T> p;
         std::shared_ptr<details> d;
         const T* px;
-        VerifyExecutionTime::Ptr pc;
+        VerifyExecutionTime::ptr pc;
     };
 
 
@@ -550,12 +605,12 @@ public:
             {
                 l.lock ();
             }
-            else if (l.try_lock_for (boost::chrono::milliseconds{timeout_ms}))
+            else if (l.try_lock_for (shared_state_chrono::milliseconds{timeout_ms}))
             {
             }
             else
             {
-                bool try_again = l.try_lock_for (boost::chrono::milliseconds{timeout_ms});
+                bool try_again = l.try_lock_for (shared_state_chrono::milliseconds{timeout_ms});
                 if (try_again)
                     l.unlock ();
 
@@ -568,11 +623,11 @@ public:
                 pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
         }
 
-        shared_mutex& l;
+        shared_state_mutex& l;
         std::shared_ptr<volatile T> p;
         std::shared_ptr<details> d;
         T* px;
-        VerifyExecutionTime::Ptr pc;
+        VerifyExecutionTime::ptr pc;
     };
 
 
@@ -580,9 +635,9 @@ public:
     write_ptr write() volatile { return write_ptr(*const_cast<shared_state*>(this)); }
 
     /**
-     * @brief readWriteLock returns the shared_mutex object for this instance.
+     * @brief readWriteLock returns the shared_state_mutex object for this instance.
      */
-    shared_mutex& readWriteLock() const volatile { return (*const_cast<std::shared_ptr<details>*>(&d))->lock; }
+    shared_state_mutex& readWriteLock() const volatile { return (*const_cast<std::shared_ptr<details>*>(&d))->lock; }
 
 private:
     template<typename Y>

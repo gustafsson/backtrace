@@ -1,11 +1,11 @@
 shared_state should cause a low default overhead
-0.006
+0.06
 --- unit 1 ms
 shared_state should cause a low overhead : reference
-0.00007
+0.0007
 --- unit 1 ms
 shared_state should cause a low overhead without verify_execution_time_ms
-0.001
+0.01
 --- unit 1 ms
 shared_state should fail fast with no_lock_failed
 0.0006

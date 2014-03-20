@@ -1,11 +1,10 @@
 #pragma once
 
-#include <boost/date_time/posix_time/ptime.hpp>
+#include "timer.h"
 #include <stdarg.h>
 #if defined(__cplusplus) && !defined(__CUDACC__)
     #include <ostream>
 #endif
-#include <boost/utility.hpp>
 #include <boost/format.hpp>
 
 /**
@@ -76,7 +75,7 @@ Where tt.partlyDone() will output an extra dot "." for each call.
 
 Use TaskInfo to omit "done in 100 ms."
 */
-class TaskTimer: private boost::noncopyable {
+class TaskTimer {
 public:
     enum LogLevel {
         LogVerbose = 0,
@@ -90,6 +89,8 @@ public:
     TaskTimer(bool, const char* task, va_list args);
     TaskTimer(const boost::format& fmt);
     TaskTimer();
+    TaskTimer(const TaskTimer&) = delete;
+    TaskTimer& operator=(const TaskTimer&) = delete;
     ~TaskTimer();
 
     static void this_thread_quit();
@@ -106,14 +107,10 @@ public:
 
     static bool enabled();
     static void setEnabled( bool );
-    static std::string timeToString( boost::posix_time::time_duration diff );
+    static std::string timeToString( double T );
 
 private:
-    boost::posix_time::ptime startTime;
-
-#ifdef _MSC_VER
-        __int64 hpcStart;
-#endif
+    Timer timer_{false};
 
     unsigned numPartlyDone;
     bool is_unwinding;
@@ -130,10 +127,12 @@ private:
     bool printIndentation();
 };
 
-class TaskInfo: private boost::noncopyable {
+class TaskInfo {
 public:
     TaskInfo(const char* task, ...);
     TaskInfo(const boost::format&);
+    TaskInfo(const TaskInfo&) = delete;
+    TaskInfo& operator=(const TaskInfo&) = delete;
     ~TaskInfo();
 
     TaskTimer& tt() { return *tt_; }

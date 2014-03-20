@@ -3,6 +3,9 @@
 
 #include "timer.h"
 
+#include <memory>
+#include <functional>
+
 /**
  * @brief The VerifyExecutionTime class should warn if it takes longer than
  * specified to execute a scope.
@@ -17,10 +20,10 @@
 class VerifyExecutionTime
 {
 public:
-    typedef std::shared_ptr<VerifyExecutionTime> Ptr;
+    typedef std::shared_ptr<VerifyExecutionTime> ptr;
     typedef std::function<void( float expected_time, float execution_time )> report;
 
-    static Ptr start( float expected_time_, report func=0 );
+    static ptr start( float expected_time_, report func=0 );
 
     static void default_report( float expected_time, float execution_time, const std::string& label );
     static void set_default_report( report func );

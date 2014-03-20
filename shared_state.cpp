@@ -3,12 +3,12 @@
 #include "expectexception.h"
 #include "trace_perf.h"
 
-#include <boost/thread/thread.hpp>
-#include <boost/bind.hpp>
+#include <thread>
+#include <future>
 
 // scroll down to void shared_state_test::test () to see more examples
 
-using namespace boost;
+using namespace std;
 
 class OrderOfOperationsCheck
 {
@@ -65,7 +65,7 @@ public:
     void    volatile_member_method () volatile;
     void    consttest () const volatile;
 
-    int     noinlinecall() const { std::cout << ""; return 0; }
+    int     noinlinecall() const { cout << ""; return 0; }
 
 private:
 
@@ -338,7 +338,7 @@ void shared_state_test::
 
     // shared_state can be used in a map.
     {
-        std::map<A::ptr, int> mymap;
+        map<A::ptr, int> mymap;
         mymap.find (A::ptr{});
     }
 
@@ -360,7 +360,7 @@ void shared_state_test::
     // shared_state should cause an overhead of less than 1.5 microseconds in a
     // 'release' build when 'verify_execution_time_ms >= 0'.
     {
-        int N = 1000;
+        int N = 10000;
 
         shared_state<C> c{new C};
         TRACE_PERF("shared_state should cause a low default overhead");
@@ -375,9 +375,9 @@ void shared_state_test::
     // shared_state should cause an overhead of less than 0.3 microseconds in a
     // 'release' build when 'verify_execution_time_ms < 0'.
     {
-        int N = 1000;
+        int N = 10000;
 
-        boost::shared_ptr<A> a{new A};
+        shared_ptr<A> a{new A};
         TRACE_PERF("shared_state should cause a low overhead : reference");
         for (int i=0; i<N; i++)
             a->noinlinecall ();
@@ -398,6 +398,8 @@ void shared_state_test::
     // shared_state should fail fast when using 'no_lock_failed', within 0.1
     // microseconds in a 'release' build.
     {
+        int N = 1000;
+
         with_timeout_0::ptr a{new with_timeout_0};
         with_timeout_0::const_ptr consta{a};
 
@@ -405,14 +407,14 @@ void shared_state_test::
         with_timeout_0::write_ptr r{a};
 
         TRACE_PERF("shared_state should fail fast with no_lock_failed");
-        for (int i=0; i<1000; i++) {
+        for (int i=0; i<N; i++) {
             with_timeout_0::write_ptr{a,no_lock_failed()};
             with_timeout_0::read_ptr{a,no_lock_failed()};
             with_timeout_0::read_ptr{consta,no_lock_failed()};
         }
 
         trace_perf_.reset("shared_state should fail fast with timeout=0");
-        for (int i=0; i<1000; i++) {
+        for (int i=0; i<N; i++) {
             EXPECT_EXCEPTION(lock_failed, with_timeout_0::write_ptr w{a});
         }
     }
@@ -495,8 +497,13 @@ void WriteWhileReadingThread::
     // Make sure readTwice starts before this function
     this_thread::sleep_for (chrono::milliseconds{1});
 
+#ifndef SHARED_STATE_NO_TIMEOUT
     // Write access should fail as the first thread attempts a recursive read_ptr.
     EXPECT_EXCEPTION(lock_failed, B::write_ptr{b}; );
+#else
+    // Only happens if lock timeout is enabled
+    B::write_ptr{b};
+#endif
 }
 
 
@@ -557,14 +564,15 @@ void WriteWhileReadingThread::
         EXPECT_EXCEPTION(B::ptr::lock_failed, writeTwice(b));
         EXPECT_EXCEPTION(lock_failed, writeTwice(b));
 
-        // can lock for read twice if no other thread locks for write in-between
-        readTwice(b);
+        // may be able to lock for read twice if no other thread locks for write in-between, but it is not guaranteed
+        //readTwice(b);
 
         // can't lock for read twice if another thread request a write in the middle
         // that write request will fail but try_again will make this thread throw the error as well
-        boost::thread t{WriteWhileReadingThread{b}};
+        std::future<void> f = std::async(std::launch::async, WriteWhileReadingThread{b});
         EXPECT_EXCEPTION(lock_failed, readTwice(b));
-        t.join ();
+
+        f.get ();
     }
 
     // It should produce run-time exceptions with backtraces on deadlocks
@@ -572,7 +580,7 @@ void WriteWhileReadingThread::
         with_timeout_2_without_verify::ptr a{new with_timeout_2_without_verify};
         with_timeout_2_without_verify::ptr b{new with_timeout_2_without_verify};
 
-        boost::thread t{UseAandB{a,b}};
+        std::future<void> f = std::async(std::launch::async, UseAandB{a,b});
 
         try {
 
@@ -585,7 +593,7 @@ void WriteWhileReadingThread::
             EXCEPTION_ASSERT(backtrace);
         }
 
-        t.join ();
+        f.get ();
     }
 
     // It should silently warn if a lock is kept so long that a simultaneous lock
