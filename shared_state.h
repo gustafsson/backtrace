@@ -184,14 +184,9 @@ class shared_state_details {
 };
 
 
-template <bool B, typename T = void>
-struct disable_if {
-    typedef T type;
-};
-
-template <typename T>
-struct disable_if<true,T> {
-};
+// compare with std::enable_if
+template <bool, class Tp = void> struct disable_if {};
+template <class T> struct disable_if<false, T> {typedef T type;};
 
 
 /**
@@ -203,8 +198,16 @@ struct disable_if<true,T> {
  *    that other simultaneous lock attempts will fail.
  *
  *
- * Quick cheat sheet
- * -----------------
+ * In a nutshell
+ * -------------
+ *    shared_state<A> a{new A};
+ * ...
+ *    a.write()->foo();         // Mutually exclusive write access
+ *
+ *
+ * Cheat sheet
+ * -----------
+ * The examples below uses this class declaration:
  *    class A {
  *    public:
  *       void foo();
@@ -212,39 +215,36 @@ struct disable_if<true,T> {
  *       void baz() volatile;
  *    };
  *
- *    shared_state<A> a{new A}; // Smart pointer that make its data safe to use
- *                              // in multiple threads.
- *    a.write()->foo();         // Mutually exclusive write access
- *    a.read()->bar();          // Shared read-only access
- *    a->baz();                 // use the volailte qualifier to denote thread-
- *                              // safe method that doesn't require a lock
+ * Instanciated like this to make its data safe to use in concurrent threads:
+ *    shared_state<A> a{new A};
  *
- *    a.read()->foo(); <-- error  // a.read() gives only const access, foo is non-const
- *    a->foo();        <-- error  // un-safe method call fails in compile time, foo is non-volatile
+ * Shared read-only access:
+ *    a.read()->bar();
  *
+ * Enter critical section:
  *    {
- *        auto w = a.write();   // Wait for lock and enter a critical section
+ *        auto w = a.write();
  *        w->foo();
  *        w->bar();
- *        // exit early with w.unlock or let w go out-of-scope
  *    }
  *
- *    if (auto w = a.try_write())   // Conditional critical section, don't wait for lock
+ * Conditional critical section, don't wait for lock
+ *    if (auto w = a.try_write())
  *    {
  *        w->foo();
  *    }
  *
+ * Catch if a lock couldn't be obtained within a given timeout. The timeout is
+ * set by shared_state_traits<A>:
  *    try {
  *       a.write()->foo();
  *    } catch(lock_failed) {
- *       // Catch if a lock couldn't be obtained within a given timeout.
- *       // The timeout is set when instanciating shared_state<A>.
+ *       ...
  *    }
  *
- *    shared_state<A>::write_ptr w{a, no_lock_failed()};
- *                      // Returns immediately without waiting.
- *    if (w) w->foo();  // Only lock for access if readily availaible (i.e
- *                      // currently not locked by any other thread)
+ * Use the volailte qualifier to denote thread-safe method that doesn't
+ * require a lock:
+ *    a->baz();
  *
  * For more complete examples (that actually compile) see
  * shared_state_test::test () in shared_state.cpp

@@ -253,7 +253,7 @@ void shared_state_test::
 
         // Assuming 'const_method ()' doesn't have any other side effects
         // 'mya' is guaranteed to not change between the two calls to
-        // r->const_method ().
+        // 'r->const_method ()'.
     }
 
     // The differences in the bad and good practices illustrated above is
