@@ -16,6 +16,9 @@
  *
  * It should cause an overhead of less than 1.5 microseconds in a release
  * build and less than 3 microseconds in a debug build.
+ *
+ * Never throw from the report function. Doing so results in undefined
+ * behaviour.
  */
 class VerifyExecutionTime
 {

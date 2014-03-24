@@ -78,13 +78,18 @@ void VerifyExecutionTime::
 {
     // It should warn if it takes longer than specified to execute a scope.
     {
-        bool did_report = false;
+        float expected_time=0.003, execution_time=0;
 
         {
-            VerifyExecutionTime::ptr x = VerifyExecutionTime::start (0.002, [&did_report](float,float){did_report = true;});
+            VerifyExecutionTime::ptr x = VerifyExecutionTime::start (expected_time, [&](float, float v){
+                execution_time = v;
+            });
             this_thread::sleep_for (chrono::milliseconds(1));
         }
-        EXCEPTION_ASSERT(!did_report);
+
+        EXCEPTION_ASSERT_LESS(execution_time, expected_time);
+
+        bool did_report = false;
         {
             VerifyExecutionTime::ptr x = VerifyExecutionTime::start (0.001, [&did_report](float,float){did_report = true;});
             this_thread::sleep_for (chrono::milliseconds(1));
