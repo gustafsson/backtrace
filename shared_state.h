@@ -601,6 +601,7 @@ public:
     private:
         friend class shared_state;
 
+        template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
         explicit write_ptr (const shared_state& vp)
             :   l (vp.readWriteLock()),
                 p (vp.p),
@@ -610,6 +611,7 @@ public:
             lock ();
         }
 
+        template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
         write_ptr (const shared_state& vp, no_lock_failed)
             :   l (vp.readWriteLock()),
                 p (vp.p),
@@ -671,7 +673,6 @@ public:
      * @brief write provides thread safe read and write access. Not accessible
      * if T is const.
      */
-    template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
     write_ptr write() volatile { return write_ptr(*const_cast<shared_state*>(this)); }
 
     /**
@@ -686,7 +687,6 @@ public:
     /**
      * @brief try_write. See try_read.
      */
-    template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
     write_ptr try_write() volatile { return write_ptr(*const_cast<shared_state*>(this), no_lock_failed()); }
 
     /**
