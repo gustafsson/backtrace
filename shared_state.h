@@ -120,22 +120,21 @@ public:
     typedef boost::error_info<struct try_again, bool> try_again_value;
 };
 
-
+struct shared_state_traits_default {
 #ifdef _DEBUG
-// disable timeouts during debug sessions
-//#define shared_state_lock_timeout_ms -1
-#define shared_state_lock_timeout_ms 100
+    // Disable timeouts during debug sessions by returning -1
+    int timeout_ms() { return 100; }
+    int verify_execution_time_ms() { return 50; }
 #else
-#define shared_state_lock_timeout_ms 100
+    int timeout_ms() { return 100; }
+    // Disable verify_execution in "release" as it incurs an extra overhead
+    int verify_execution_time_ms() { return -1; }
 #endif
-
-
-template<class C>
-struct shared_state_traits {
-    int timeout_ms() { return shared_state_lock_timeout_ms; }
-    int verify_execution_time_ms() { return shared_state_lock_timeout_ms/2; }
     VerifyExecutionTime::report report_func() { return 0; }
 };
+
+template<class C>
+struct shared_state_traits: public shared_state_traits_default {};
 
 template<typename T>
 struct has_shared_state_traits
@@ -163,6 +162,7 @@ template<class C>
 struct shared_state_traits_helper<C,true> {
     typedef typename C::shared_state_traits type;
 };
+
 
 class shared_state_details {
     template<typename Y> friend class shared_state;
