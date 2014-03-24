@@ -478,14 +478,9 @@ void WriteWhileReadingThread::
     // Make sure readTwice starts before this function
     this_thread::sleep_for (chrono::milliseconds{1});
 
-#ifndef SHARED_STATE_NO_TIMEOUT
     // Write access should fail as the first thread attempts recursive locks
     // through multiple calls to read ().
     EXPECT_EXCEPTION(lock_failed, b.write (); );
-#else
-    // Only happens if lock timeout is enabled
-    b.write ();
-#endif
 }
 
 

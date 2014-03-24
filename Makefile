@@ -24,14 +24,16 @@ DEBUG_RELEASE = -O3
 # if there is no lock contention. The overhead is about 0.8 microseconds.
 #
 #SHARED_STATE  = -DSHARED_STATE_NO_SHARED_MUTEX
+#SHARED_STATE  = -DSHARED_STATE_NO_TIMEOUT
 #SHARED_STATE  = -DSHARED_STATE_NO_SHARED_MUTEX -DSHARED_STATE_NO_TIMEOUT
 #
-# std is 20% faster than boost with concurrent reads enabled. boost is 1%
-# faster than std without concurrent reads.
+# std (libc++) is 20% faster than boost with concurrent reads enabled.
+# boost (pthreads) is 1% faster than std without concurrent reads.
 #
 #LIBS          = -L/opt/local/lib -lboost_system-mt -lboost_chrono-mt -lboost_thread-mt
 #SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX
 #SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX -DSHARED_STATE_NO_SHARED_MUTEX
+#SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX -DSHARED_STATE_NO_TIMEOUT
 #SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX -DSHARED_STATE_NO_SHARED_MUTEX -DSHARED_STATE_NO_TIMEOUT
 
 
