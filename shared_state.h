@@ -1,6 +1,107 @@
 /**
- * The shared_state class should guarantee thread-safe access to objects.
- * See details on the class shared_state below.
+ * Include: shared_state.h, shared_state_mutex.h, shared_timed_mutex_polyfill.h
+ * Library: C++11 only
+ *
+ * The shared_state class is a smart pointer that should guarantee thread-safe
+ * access to objects, with
+ *
+ *  - compile-time errors on missing locks,
+ *  - run-time exceptions on lock timeout, from all racing threads
+ *    participating in a deadlock.
+ *
+ *
+ * It should be extensible enough to let clients add features without modifying
+ * the source, like
+ *
+ *  - backtraces on failed locks,
+ *  - run-time warnings on locks that are kept long enough to make it likely
+ *    that other simultaneous lock attempts will fail.
+ *
+ *
+ * In a nutshell
+ * -------------
+ *
+ *        shared_state<A> a {new A};
+ *        ...
+ *        a.write ()->foo ();         // Mutually exclusive write access
+ *
+ *
+ * Using shared_state
+ * ------------------
+ * Use shared_state to ensure thread-safe access to otherwise unprotected data
+ * of class MyType by wrapping all 'MyType* p = new MyType' calls as:
+ *
+ *        shared_state<MyType> p {new MyType};
+ *
+ *
+ * There are a couple of ways to access the data in 'p'. Call "p.write()" to
+ * enter a critical section for read and write access. The critical section is
+ * thread-safe and exception-safe through a mutex lock and RAII. p.write() can
+ * be used either in a single function call:
+ *
+ *        p.write ()->...
+ *
+ * Or to enter a critical section to perform a transaction over multiple method
+ * calls:
+ *
+ *        {
+ *          auto w = p.write ();
+ *          w->...
+ *          w->...
+ *        }
+ *
+ * Enter a critical section only if the lock is readily available:
+ *
+ *        if (auto w = p.try_write ())
+ *        {
+ *          w->...
+ *          w->...
+ *        }
+ *
+ * Like-wise 'p.read()' or 'p.try_read()' creates a critical section with
+ * shared read-only access. An excepion is thrown if a lock couldn't be
+ * obtained within a given timeout. The timeout is set, or disabled, by
+ * shared_state_traits<MyType>:
+ *
+ *        try {
+ *          p.write ()->...
+ *        } catch (lock_failed) {
+ *          ...
+ *        }
+ *
+ * You can also discard the thread safety and get unprotected access to a
+ * mutable state:
+ *
+ *        {
+ *          auto m = p.unprotected ();
+ *          m->...
+ *          m->...
+ *        }
+ *
+ * For more complete examples (that actually compile) see
+ * shared_state_test::test () in shared_state.cpp.
+ *
+ *
+ * Performance and overhead
+ * ------------------------
+ * shared_state should cause an overhead of less than 0.1 microseconds in a
+ * 'release' build when using 'try_write' or 'try_read'.
+ *
+ * shared_state should fail within 0.1 microseconds in a 'release' build when
+ * using 'try_write' or 'try_read' on a busy lock.
+ *
+ * shared_state should cause an overhead of less than 0.3 microseconds in a
+ * 'release' build when using 'write' or 'read'.
+ *
+ *
+ * Configuring timeouts and extending functionality
+ * ------------------------------------------------
+ * It is possible to use different timeouts, or disable timeouts, for different
+ * types. Create a template specialization of shared_state_traits to override
+ * the defaults. Alternatively you can also create an internal class called
+ * shared_state_traits within your type. See 'shared_state_traits_default' for
+ * more details.
+ *
  *
  * Author: johan.b.gustafsson@gmail.com
  */
@@ -92,105 +193,7 @@ template <bool, class Tp = void> struct disable_if {};
 template <class T> struct disable_if<false, T> {typedef T type;};
 
 
-/**
- * The shared_state class is a smart pointer that should guarantee thread-safe
- * access to objects, with
- *  - compile-time errors on missing locks,
- *  - run-time exceptions on lock timeout, from all racing threads
- *    participating in a deadlock.
- *
- * It should be extensible enough to let clients efficiently add features like
- *  - backtraces on failed locks,
- *  - run-time warnings on locks that are kept long enough to make it likely
- *    that other simultaneous lock attempts will fail.
- *
- *
- * In a nutshell
- * -------------
- *    shared_state<A> a{new A};
- * ...
- *    a.write()->foo();         // Mutually exclusive write access
- *
- *
- * Using shared_state
- * ------------------
- * Use shared_state to ensure thread-safe access to otherwise unprotected data
- * of class MyType by wrapping all 'MyType* p = new MyType' calls as:
- *
- *     shared_state<MyType> p{new MyType};
- *
- *
- * There are a couple of ways to access the data in 'p'. Call "p.write()" to
- * enter a critical section for read and write access. The critical section is
- * thread-safe and exception-safe through a mutex lock and RAII. p.write() can
- * be used either in a single function call:
- *
- *        p.write()->...
- *
- * Or to enter a critical section to perform a transaction over multiple method
- * calls:
- *
- *        {
- *          auto w = p.write();
- *          w->...
- *          w->...
- *        }
- *
- * Enter a critical section only if the lock is readily available:
- *
- *        if (auto w = p.try_write())
- *        {
- *          w->...
- *          w->...
- *        }
- *
- * Like-wise 'p.read()' or 'p.try_read()' creates a critical section with
- * shared read-only access. An excepion is thrown if a lock couldn't be
- * obtained within a given timeout. The timeout is set, or disabled, by
- * shared_state_traits<MyType>:
- *
- *        try {
- *          p.write()->...
- *        } catch(lock_failed) {
- *          ...
- *        }
- *
- * You can also discard the thread safety and get unprotected access to a
- * mutable state:
- *
- *        {
- *          auto m = p.unprotected();
- *          m->...
- *          m->...
- *        }
- *
- * For more complete examples (that actually compile) see
- * shared_state_test::test () in shared_state.cpp.
- *
- *
- * Performance and overhead
- * ------------------------
- * shared_state should cause an overhead of less than 0.1 microseconds in a
- * 'release' build when using 'try_write' or 'try_read'.
- *
- * shared_state should fail within 0.1 microseconds in a 'release' build when
- * using 'try_write' or 'try_read' on a busy lock.
- *
- * shared_state should cause an overhead of less than 0.3 microseconds in a
- * 'release' build when using 'write' or 'read'.
- *
- *
- * Configuring timeouts and extending functionality
- * ------------------------------------------------
- * It is possible to use different timeouts, or disable timeouts, for different
- * types. Create a template specialization of shared_state_traits to override
- * the defaults. Alternatively you can also create an internal class called
- * shared_state_traits within your type. See 'shared_state_traits_default' for
- * more details.
- *
- *
- * Author: johan.b.gustafsson@gmail.com
- */
+
 template<typename T>
 class shared_state final
 {
