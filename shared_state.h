@@ -92,24 +92,13 @@ struct shared_state_traits_helper<C,true> {
     typedef typename C::shared_state_traits type;
 };
 
-
-class shared_state_details {
-    template<typename Y> friend class shared_state;
-
-    template<typename Traits>
-    shared_state_details(Traits traits)
-        : timeout_ms(traits.timeout_ms()),
-          verify_execution_time_ms(traits.verify_execution_time_ms()),
-          report_func(traits.report_func())
-    {}
-
+template<typename T>
+struct shared_state_details: public shared_state_traits_helper<T>::type {
+    shared_state_details() {}
     shared_state_details(shared_state_details const&) = delete;
     shared_state_details& operator=(shared_state_details const&) = delete;
 
     mutable shared_state_mutex lock;
-    const int timeout_ms;
-    const int verify_execution_time_ms;
-    const VerifyExecutionTime::report report_func;
 };
 
 
@@ -134,51 +123,6 @@ template <class T> struct disable_if<false, T> {typedef T type;};
  *    a.write()->foo();         // Mutually exclusive write access
  *
  *
- * Cheat sheet
- * -----------
- * The examples below uses this class declaration:
- *    class A {
- *    public:
- *       void foo();
- *       void bar() const;
- *       void baz() volatile;
- *    };
- *
- * Instanciated like this to make its data safe to use in concurrent threads:
- *    shared_state<A> a{new A};
- *
- * Shared read-only access:
- *    a.read()->bar();
- *
- * Enter critical section:
- *    {
- *        auto w = a.write();
- *        w->foo();
- *        w->bar();
- *    }
- *
- * Conditional critical section, don't wait for lock
- *    if (auto w = a.try_write())
- *    {
- *        w->foo();
- *    }
- *
- * Catch if a lock couldn't be obtained within a given timeout. The timeout is
- * set by shared_state_traits<A>:
- *    try {
- *       a.write()->foo();
- *    } catch(lock_failed) {
- *       ...
- *    }
- *
- * Use the volailte qualifier to denote thread-safe method that doesn't
- * require a lock:
- *    a->baz();
- *
- * For more complete examples (that actually compile) see
- * shared_state_test::test () in shared_state.cpp
- *
- *
  * Using shared_state
  * ------------------
  * Use shared_state to ensure thread-safe access to otherwise unprotected data
@@ -187,47 +131,80 @@ template <class T> struct disable_if<false, T> {typedef T type;};
  *     shared_state<MyType> p{new MyType};
  *
  *
- * There are four ways to access the data in 'p'.
+ * There are a couple of ways to access the data in 'p'. Call "p.write()" to
+ * enter a critical section for read and write access. The critical section is
+ * thread-safe and exception-safe through a mutex lock and RAII. p.write() can
+ * be used either in a single function call:
  *
- * 1. Thread-safe and exception-safe shared read-only access (lock and RAII)
+ *        p.write()->...
  *
- *     p.read()->...
+ * Or to enter a critical section to perform a transaction over multiple method
+ * calls:
  *
- * or
- *     auto r = p.read();
- *     r->...
- *     r->...
+ *        {
+ *          auto w = p.write();
+ *          w->...
+ *          w->...
+ *        }
+ *
+ * Enter a critical section only if the lock is readily available:
+ *
+ *        if (auto w = p.try_write())
+ *        {
+ *          w->...
+ *          w->...
+ *        }
+ *
+ * Like-wise 'p.read()' or 'p.try_read()' creates a critical section with
+ * shared read-only access. While these critical sections are sufficient for
+ * the most part you might want to use some methods that take are responsible
+ * for their own thread-safety. If you denoted such a method as thread-safe by
+ * declaring the method with the volatile qualifier you can call it from
+ * shared_state without a critical section. For instance, if the class
+ * declaration looks like this:
+ *
+ *        class MyType {
+ *        public:
+ *          void foo() volatile;
+ *          ...
+ *        };
+ *
+ * You can then call foo() directly like this:
+ *
+ *        p->foo();
+ *
+ * An excepion is thrown if a lock couldn't be obtained within a given timeout.
+ * The timeout is set, or disabled, by shared_state_traits<MyType>:
+ *
+ *        try {
+ *          p.write()->...
+ *        } catch(lock_failed) {
+ *          ...
+ *        }
+ *
+ * You can also discard the thread safety and get unprotected access to a
+ * mutable state:
+ *
+ *        {
+ *          shared_state<MyType>::shared_mutable_state m{p};
+ *          m->...
+ *          m->...
+ *        }
+ *
+ * For more complete examples (that actually compile) see
+ * shared_state_test::test () in shared_state.cpp.
  *
  *
- * 2. Thread-safe and exception-safe mutually exclusive read and write access
- *
- *     p.write()->...
- *
- * or
- *     auto w = p.write();
- *     w->...
- *     w->...
- *
- *
- * 3. Non thread-safe mutable state
- *
- *     shared_state<MyType>::shared_mutable_state m{p};
- *     m->...
- *     m->...
- *
- *
- * 4. Thread-safe access to methods that are declared as 'thread-safe' by using
- * the volatile qualifier on the method
- *
- *     p->...
- *
- * From a volatile object you can only access methods that are volatile (just
- * like only const methods are accessible from a const object). Using the
+ * Notes about using volatile
+ * --------------------------
+ * From a volatile instance you can only access methods that are volatile (just
+ * like only const methods are accessible from a const instance). Using the
  * volatile classifier prevents access to use any "regular" (non-volatile)
- * methods.
+ * methods. This applies to members as well but
  *
  * "The volatile keyword in C++11 ISO Standard code is to be used only for
  * hardware access; do not use it for inter-thread communication." [msdn]
+ *
  * shared_state doesn't use the volatile qualifier for inter-thread
  * communication but to ensure un-safe methods aren't called without adequate
  * locks. volailte is merely some sort of syntactic sugar in this context.
@@ -266,7 +243,7 @@ template<typename T>
 class shared_state final
 {
 private:
-    typedef const shared_state_details details;
+    typedef shared_state_details<typename std::remove_const<T>::type> details;
 
 public:
     typedef T element_type;
@@ -306,7 +283,7 @@ public:
         if (yp)
         {
             p.reset (yp);
-            d.reset (new details{typename shared_state_traits_helper< Y >::type()});
+            d.reset (new details);
         }
         else
         {
@@ -437,13 +414,13 @@ public:
                 px = 0;
             else
             {
-                if (0<d->verify_execution_time_ms)
-                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
+                if (0<d->verify_execution_time_ms())
+                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
             }
         }
 
         void lock() {
-            int timeout_ms = d->timeout_ms; // l is not locked, but timeout_ms is const
+            int timeout_ms = d->timeout_ms(); // l is not locked, but timeout_ms is const
 
             // try_lock_shared_for and lock_shared are unnecessarily complex if
             // the lock is available right away
@@ -473,8 +450,8 @@ public:
                                       << typename lock_failed::try_again_value{try_again});
             }
 
-            if (0<d->verify_execution_time_ms)
-                pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
+            if (0<d->verify_execution_time_ms())
+                pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
         }
 
         shared_state_mutex& l;
@@ -551,14 +528,14 @@ public:
                 px = 0;
             else
             {
-                if (0<d->verify_execution_time_ms)
-                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
+                if (0<d->verify_execution_time_ms())
+                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
             }
         }
 
         // See read_ptr::lock
         void lock() {
-            int timeout_ms = d->timeout_ms;
+            int timeout_ms = d->timeout_ms();
 
             if (l.try_lock())
             {
@@ -581,8 +558,8 @@ public:
                                       << typename lock_failed::try_again_value{try_again});
             }
 
-            if (0<d->verify_execution_time_ms)
-                pc = VerifyExecutionTime::start (d->verify_execution_time_ms * 1e-3f, d->report_func);
+            if (0<d->verify_execution_time_ms())
+                pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
         }
 
         shared_state_mutex& l;
