@@ -156,25 +156,9 @@ template <class T> struct disable_if<false, T> {typedef T type;};
  *        }
  *
  * Like-wise 'p.read()' or 'p.try_read()' creates a critical section with
- * shared read-only access. While these critical sections are sufficient for
- * the most part you might want to use some methods that take are responsible
- * for their own thread-safety. If you denoted such a method as thread-safe by
- * declaring the method with the volatile qualifier you can call it from
- * shared_state without a critical section. For instance, if the class
- * declaration looks like this:
- *
- *        class MyType {
- *        public:
- *          void foo() volatile;
- *          ...
- *        };
- *
- * You can then call foo() directly like this:
- *
- *        p->foo();
- *
- * An excepion is thrown if a lock couldn't be obtained within a given timeout.
- * The timeout is set, or disabled, by shared_state_traits<MyType>:
+ * shared read-only access. An excepion is thrown if a lock couldn't be
+ * obtained within a given timeout. The timeout is set, or disabled, by
+ * shared_state_traits<MyType>:
  *
  *        try {
  *          p.write()->...
@@ -186,32 +170,13 @@ template <class T> struct disable_if<false, T> {typedef T type;};
  * mutable state:
  *
  *        {
- *          shared_state<MyType>::shared_mutable_state m{p};
+ *          auto m = p.unprotected();
  *          m->...
  *          m->...
  *        }
  *
  * For more complete examples (that actually compile) see
  * shared_state_test::test () in shared_state.cpp.
- *
- *
- * Notes about using volatile
- * --------------------------
- * From a volatile instance you can only access methods that are volatile (just
- * like only const methods are accessible from a const instance). Using the
- * volatile classifier prevents access to use any "regular" (non-volatile)
- * methods. This applies to members as well but
- *
- * "The volatile keyword in C++11 ISO Standard code is to be used only for
- * hardware access; do not use it for inter-thread communication." [msdn]
- *
- * shared_state doesn't use the volatile qualifier for inter-thread
- * communication but to ensure un-safe methods aren't called without adequate
- * locks. volailte is merely some sort of syntactic sugar in this context.
- *
- * The idea of letting volatile on methods denote 'thread-safe method' is based
- * on this article:
- * http://www.drdobbs.com/cpp/volatile-the-multithreaded-programmers-b/184403766
  *
  *
  * Performance and overhead
@@ -292,9 +257,6 @@ public:
         }
     }
 
-    volatile T* operator-> () const { return p.get (); }
-    volatile T& operator* () const { return *p.get (); }
-    volatile T* get () const { return p.get (); }
     explicit operator bool() const { return p.get (); }
     bool operator== (const shared_state& b) const { return p.get () == b.p.get (); }
     bool operator!= (const shared_state& b) const { return !(*this == b); }
@@ -307,7 +269,7 @@ public:
 
         shared_state lock() const {
             std::shared_ptr<details> datap = data.lock ();
-            std::shared_ptr<volatile T> pp = p.lock ();
+            std::shared_ptr<T> pp = p.lock ();
 
             if (pp && datap)
                 return shared_state(pp, datap);
@@ -317,30 +279,7 @@ public:
 
     private:
         std::weak_ptr<details> data;
-        std::weak_ptr<volatile T> p;
-    };
-
-    /**
-     * @brief The shared_mutable_state class provides direct access to the
-     * unprotected state. Consider using read_ptr or write_ptr instead.
-     */
-    class shared_mutable_state {
-    public:
-        shared_mutable_state() {}
-        shared_mutable_state(const shared_state& t)
-            :
-              p(t.p),
-              px(const_cast<T*> (p.get ()))
-        {}
-
-        T* operator-> () const { return px; }
-        T& operator* () const { return *px; }
-        T* get () const { return px; }
-        explicit operator bool() const { return px; }
-
-    private:
-        std::shared_ptr<volatile T> p;
-        T* px;
+        std::weak_ptr<T> p;
     };
 
     /**
@@ -361,12 +300,10 @@ public:
     class read_ptr {
     public:
         read_ptr(read_ptr&& b)
-            :   l (b.l),
-                px (b.px)
+            :   l (b.l)
         {
             p.swap (b.p);
             d.swap (b.d);
-            b.px = 0;
         }
 
         read_ptr(const read_ptr&) = delete;
@@ -377,19 +314,19 @@ public:
             unlock ();
         }
 
-        const T* operator-> () const { return px; }
-        const T& operator* () const { return *px; }
-        const T* get () const { return px; }
-        explicit operator bool() const { return px; }
+        const T* operator-> () const { return p.get (); }
+        const T& operator* () const { return *p; }
+        const T* get () const { return p.get (); }
+        explicit operator bool() const { return (bool)p; }
 
         void unlock() {
-            if (px)
+            if (p)
             {
                 l.unlock_shared ();
                 pc.reset ();
             }
 
-            px = 0;
+            p.reset ();
         }
 
     private:
@@ -398,8 +335,7 @@ public:
         explicit read_ptr (const shared_state& vp)
             :   l (vp.readWriteLock()),
                 p (vp.p),
-                d (vp.d),
-                px (const_cast<const T*> (vp.get ()))
+                d (vp.d)
         {
             lock ();
         }
@@ -407,11 +343,10 @@ public:
         read_ptr (const shared_state& vp, no_lock_failed)
             :   l (vp.readWriteLock()),
                 p (vp.p),
-                d (vp.d),
-                px (const_cast<const T*> (p.get ()))
+                d (vp.d)
         {
             if (!l.try_lock_shared ())
-                px = 0;
+                p.reset ();
             else
             {
                 if (0<d->verify_execution_time_ms())
@@ -455,10 +390,9 @@ public:
         }
 
         shared_state_mutex& l;
-        // p is 'const volatile T', compared to shared_state::p which is just 'volatile T'.
-        std::shared_ptr<const volatile T> p;
+        // p is 'const T', compared to shared_state::p which is just 'T'.
+        std::shared_ptr<const T> p;
         std::shared_ptr<details> d;
-        const T* px;
         VerifyExecutionTime::ptr pc;
     };
 
@@ -474,12 +408,10 @@ public:
     class write_ptr {
     public:
         write_ptr(write_ptr&& b)
-            :   l (b.l),
-                px (b.px)
+            :   l (b.l)
         {
             p.swap (b.p);
             d.swap (b.d);
-            b.px = 0;
         }
 
         write_ptr(const write_ptr&) = delete;
@@ -489,19 +421,19 @@ public:
             unlock ();
         }
 
-        T* operator-> () const { return px; }
-        T& operator* () const { return *px; }
-        T* get () const { return px; }
-        explicit operator bool() const { return px; }
+        T* operator-> () const { return p.get (); }
+        T& operator* () const { return *p; }
+        T* get () const { return p.get (); }
+        explicit operator bool() const { return (bool)p; }
 
         void unlock() {
-            if (px)
+            if (p)
             {
                 l.unlock ();
                 pc.reset ();
             }
 
-            px = 0;
+            p.reset ();
         }
 
     private:
@@ -511,8 +443,7 @@ public:
         explicit write_ptr (const shared_state& vp)
             :   l (vp.readWriteLock()),
                 p (vp.p),
-                d (vp.d),
-                px (const_cast<T*> (p.get ()))
+                d (vp.d)
         {
             lock ();
         }
@@ -521,11 +452,10 @@ public:
         write_ptr (const shared_state& vp, no_lock_failed)
             :   l (vp.readWriteLock()),
                 p (vp.p),
-                d (vp.d),
-                px (const_cast<T*> (p.get ()))
+                d (vp.d)
         {
             if (!l.try_lock ())
-                px = 0;
+                p.reset ();
             else
             {
                 if (0<d->verify_execution_time_ms())
@@ -563,9 +493,8 @@ public:
         }
 
         shared_state_mutex& l;
-        std::shared_ptr<volatile T> p;
+        std::shared_ptr<T> p;
         std::shared_ptr<details> d;
-        T* px;
         VerifyExecutionTime::ptr pc;
     };
 
@@ -573,13 +502,13 @@ public:
     /**
      * @brief read provides thread safe read-only access.
      */
-    read_ptr read() const volatile { return read_ptr(*const_cast<const shared_state*>(this)); }
+    read_ptr read() const { return read_ptr(*this); }
 
     /**
      * @brief write provides thread safe read and write access. Not accessible
      * if T is const.
      */
-    write_ptr write() volatile { return write_ptr(*const_cast<shared_state*>(this)); }
+    write_ptr write() { return write_ptr(*this); }
 
     /**
      * @brief try_read obtains the lock only if it is readily available.
@@ -588,25 +517,34 @@ public:
      * accessors return null pointers. This function fails much faster (about
      * 30x faster) than setting timeout_ms=0 and discarding any lock_failed.
      */
-    read_ptr try_read() const volatile { return read_ptr(*const_cast<const shared_state*>(this), no_lock_failed()); }
+    read_ptr try_read() const { return read_ptr(*this, no_lock_failed()); }
 
     /**
      * @brief try_write. See try_read.
      */
-    write_ptr try_write() volatile { return write_ptr(*const_cast<shared_state*>(this), no_lock_failed()); }
+    write_ptr try_write() { return write_ptr(*this, no_lock_failed()); }
 
     /**
      * @brief readWriteLock returns the mutex object for this instance.
      */
-    shared_state_mutex& readWriteLock() const volatile { return (*const_cast<std::shared_ptr<details>*>(&d))->lock; }
+    shared_state_mutex& readWriteLock() const { return d->lock; }
+
+
+    /**
+     * @brief unprotected gives direct access to the unprotected state for
+     * using other synchornization mechanisms. Consider using read() or write()
+     * instead.
+     */
+    std::shared_ptr<T> unprotected() { return p; }
+    std::shared_ptr<const T> unprotected() const { return p; }
 
 private:
     template<typename Y>
     friend class shared_state;
 
-    shared_state ( std::shared_ptr<volatile T> p, std::shared_ptr<details> d ) : p(p), d(d) {}
+    shared_state ( std::shared_ptr<T> p, std::shared_ptr<details> d ) : p(p), d(d) {}
 
-    std::shared_ptr<volatile T> p;
+    std::shared_ptr<T> p;
     std::shared_ptr<details> d;
 };
 

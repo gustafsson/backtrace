@@ -60,9 +60,6 @@ public:
     int     const_method () const { return a_; }
     void    method (int v) { a_ = v; }
 
-    void    volatile_member_method () volatile;
-    void    consttest () const volatile;
-
     int     noinlinecall() const { cout << ""; return 0; }
 
 private:
@@ -166,14 +163,6 @@ void shared_state_test::
     // It should guarantee compile-time thread safe access to objects.
     shared_state<A> mya {new A};
 
-    // can't read from mya
-    // error: passing 'volatile A' as 'this' argument of 'int A::a () const' discards qualifiers
-    // mya->a ();
-
-    // can't write to mya
-    // error: passing 'volatile A' as 'this' argument of 'void A::a (int)' discards qualifiers
-    // mya->a (5);
-
     {
         // Lock for write access
         auto w = mya.write ();
@@ -194,8 +183,8 @@ void shared_state_test::
         EXCEPTION_ASSERT_EQUALS (b.const_method (), 5);
 
         // can't write to mya with the read_ptr from .read()
-        // error: passing 'const A' as 'this' argument of 'void A::a (int)' discards qualifiers
-        // r->a (5);
+        // r->method (5);
+        // error: member function 'method' not viable: 'this' argument has type 'const A', but function is not marked const
 
         // Unlock on out-of-scope
     }
@@ -203,23 +192,17 @@ void shared_state_test::
     // Lock for a single call
     mya.read ()->const_method ();
 
-    // Can call volatile methods
-    mya->volatile_member_method ();
-
     // Create a reference to a const instance
     A::const_ptr consta (mya);
-
-    // Can call volatile const methods from a const_ptr
-    consta->consttest ();
 
     // Can get read-only access from a const_ptr.
     consta.read ()->const_method ();
 
-    // Can get unsafe access without locks using a shared_mutable_state
-    shared_state<A>::shared_mutable_state (mya)->method (1);
+    // Can get unprotected access without locks
+    mya.unprotected ()->method (1);
 
     // Can not get write access to a const pointer.
-    // consta.write (); // error: no matching member function for call to 'write'
+    // consta.write (); // error
 
     // Conditional critical section, don't wait if the lock is not available
     if (auto w = mya.try_write ())
@@ -424,36 +407,6 @@ A& A::
     a_ = b.a_;
     c_ = b.c_;
     return *this;
-}
-
-
-void A::
-        volatile_member_method () volatile
-{
-    // Can't call non-volatile methods
-    // error: no matching member function for call to 'a'
-    // this->a ();
-    // (there is a method a () but it is not declared volatile)
-
-    // volatile applies to member variables
-    // error: no viable overloaded '='
-    // this->c_ = 3;
-    // (there is an operator= but it is not declared volatile)
-}
-
-
-void A::
-        consttest () const volatile
-{
-    // Can't call non-volatile methods
-    // error: no matching member function for call to 'a'
-    // this->a ();
-    // (there is a method a () but it is not declared const volatile)
-
-    // const volatile applies to member variables
-    // error: no viable overloaded '='
-    // this->c_ = 3;
-    // (there is an operator= but it is not declared const volatile)
 }
 
 
