@@ -7,6 +7,7 @@
 #include "tasktimer.h"
 #include "timer.h"
 #include "verifyexecutiontime.h"
+#include "demangle.h"
 
 #include <stdio.h>
 #include <exception>
@@ -39,7 +40,7 @@ int UnitTest::
         RUNTEST(shared_state_test);
         RUNTEST(VerifyExecutionTime);
     } catch (const exception& x) {
-        TaskInfo(boost::format("%s") % boost::diagnostic_information(x));
+        TaskInfo(boost::format("%s\n%s") % vartype(x) % boost::diagnostic_information(x));
         printf("\n FAILED in %s::test()\n\n", lastname.c_str ());
         return 1;
     } catch (...) {

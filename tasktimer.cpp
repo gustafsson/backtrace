@@ -6,6 +6,7 @@
 #include <map>
 #include <thread>
 #include <sstream>
+#include <mutex>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
