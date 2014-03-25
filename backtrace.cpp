@@ -28,8 +28,9 @@ void printSignalInfo(int sig);
 #ifdef __APPLE__
 string exec_get_output(string cmd) {
     FILE* pipe = popen(cmd.c_str (), "r");
-    if (!pipe)
+    if (!pipe) {
         return "";
+    }
 
     char buffer[128];
     string result = "";
@@ -234,7 +235,12 @@ string Backtrace::
     }
 
     int id = getpid();
-    string cmd = str(format("xcrun atos -p %1% %2%") % id % addrs);
+
+    // 'atos' should be invoked through 'xcrun atos', but that crashes every
+    // now and then, and takes much more time to execute.
+    //string cmd = str(format("xcrun atos -p %1% %2%") % id % addrs);
+    string cmd = str(format("atos -d -p %1% %2%") % id % addrs);
+
     string op = exec_get_output(cmd);
     found_pretty = !op.empty();
     bt += op;
@@ -300,7 +306,7 @@ static void throwfunction()
 {
     BOOST_THROW_EXCEPTION(unknown_exception() << Backtrace::make ());
 }
-
+#include "tasktimer.h"
 
 void Backtrace::
         test()
@@ -345,27 +351,27 @@ void Backtrace::
             try {
 #ifdef _MSC_VER
                 EXCEPTION_ASSERTX( s.find ("throwfunction") != string::npos, s );
-                EXCEPTION_ASSERTX( s.find ("backtrace.cpp(301)") != string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("backtrace.cpp(307)") != string::npos, s );
                 EXCEPTION_ASSERTX( s.find ("Backtrace::test") != string::npos, s );
                 EXCEPTION_ASSERTX( s.find ("main") != string::npos, s );
-                EXCEPTION_ASSERTX( s.find ("backtrace.cpp (301): throwfunction") != string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("backtrace.cpp (307): throwfunction") != string::npos, s );
                 if(4==sizeof(void*) && !debug) // WoW64 w/ optimization behaves differently
-                    EXCEPTION_ASSERTX( s.find ("backtrace.cpp (341): Backtrace::test") != string::npos, s );
+                    EXCEPTION_ASSERTX( s.find ("backtrace.cpp (347): Backtrace::test") != string::npos, s );
                 else
-                    EXCEPTION_ASSERTX( s.find ("backtrace.cpp (339): Backtrace::test") != string::npos, s );
+                    EXCEPTION_ASSERTX( s.find ("backtrace.cpp (345): Backtrace::test") != string::npos, s );
 #else
                 EXCEPTION_ASSERTX( s.find ("throwfunction()") != string::npos, s );
-                EXCEPTION_ASSERTX( s.find ("backtrace.cpp(301)") != string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("backtrace.cpp(307)") != string::npos, s );
                 EXCEPTION_ASSERTX( s.find ("Backtrace::test()") != string::npos, s );
                 EXCEPTION_ASSERTX( s.find ("start") != string::npos, s );
 
-                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:301)") != string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:307)") != string::npos, s );
     #ifdef _DEBUG
                 // The call to throwfunction will be removed by optimization
                 EXCEPTION_ASSERTX( s.find ("main") != string::npos, s );
-                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:341)") != string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:347)") != string::npos, s );
     #else
-                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:341)") == string::npos, s );
+                EXCEPTION_ASSERTX( s.find ("(backtrace.cpp:347)") == string::npos, s );
     #endif
 #endif
                 break;
