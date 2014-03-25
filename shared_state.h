@@ -66,31 +66,15 @@ struct shared_state_traits_default {
 template<class C>
 struct shared_state_traits: public shared_state_traits_default {};
 
-template<typename T>
-struct has_shared_state_traits
-{
-    // detect C::shared_state_traits::timeout, assume
-    // verify_execution_time and report_func are also present
+template<class T>
+struct shared_state_traits_helper {
     template<typename C>
-    static char test(decltype(&C::shared_state_traits::timeout));
+    static typename C::shared_state_traits test(typename C::shared_state_traits*);
 
     template<typename C> // worst match
-    static char (&test(...))[2];
+    static shared_state_traits<C> test(...);
 
-    static const bool value = (sizeof( test<T>(0)  ) == 1);
-};
-
-template<class C, bool a = has_shared_state_traits<C>::value>
-struct shared_state_traits_helper;
-
-template<class C>
-struct shared_state_traits_helper<C,false> {
-    typedef shared_state_traits<C> type;
-};
-
-template<class C>
-struct shared_state_traits_helper<C,true> {
-    typedef typename C::shared_state_traits type;
+    typedef decltype(test<T>(0)) type;
 };
 
 template<typename T>
