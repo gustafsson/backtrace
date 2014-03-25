@@ -8,34 +8,35 @@
 #ifndef SHARED_STATE_H
 #define SHARED_STATE_H
 
-#include "verifyexecutiontime.h"
-
-#include <boost/exception/exception.hpp>
-
-
-#ifndef SHARED_STATE_THROW_EXCEPTION
-  #ifdef SHARED_STATE_NO_BACKTRACE
-    #define SHARED_STATE_THROW_EXCEPTION(x) BOOST_THROW_EXCEPTION(x)
-  #else
-    #include "backtrace.h"
-    #define SHARED_STATE_THROW_EXCEPTION(x) BOOST_THROW_EXCEPTION(x << Backtrace::make (2))
-  #endif
-#endif
+template<class T>
+class shared_state;
 
 
 #if defined(SHARED_STATE_NO_TIMEOUT) || defined(SHARED_STATE_NO_SHARED_MUTEX) || defined(SHARED_STATE_BOOST_MUTEX)
     #include "shared_state_mutex.h"
 #else
-    namespace shared_state_chrono = std::chrono;
     #include "shared_timed_mutex_polyfill.h" // Only requires C++11, until std::shared_timed_mutex is available in C++14.
+    namespace shared_state_chrono = std::chrono;
     typedef std_polyfill::shared_timed_mutex shared_state_mutex;
 #endif
 
 
-class no_lock_failed {};
-class lock_failed: public virtual boost::exception, public virtual std::exception {
-public:
-    typedef boost::error_info<struct timeout, int> timeout_value;
+class lock_failed: public virtual std::exception {};
+
+
+struct shared_state_traits_default {
+    /**
+     If 'timeout >= 0' read_ptr/write_ptr will try to lock until the timeout
+     has passed and then throw a lock_failed exception. If 'timeout < 0'
+     they will block indefinitely until the lock becomes available.
+
+     Define SHARED_STATE_NO_TIMEOUT to disable timeouts altogether, all lock
+     attempts will then either fail or succeed immediately.
+
+     timeout() must be reentrant, i.e thread-safe without the support of
+     shared_state.
+     */
+    double timeout () { return 0.100; }
 
     /**
      When a timeout occurs on a lock, shared_state makes an attempt to detect
@@ -46,20 +47,20 @@ public:
      The try_again value describes whether that second lock attempt succeeded,
      but even if it succeeds lock_failed is still thrown.
      */
-    typedef boost::error_info<struct try_again, bool> try_again_value;
-};
+    template<class C>
+    void timeout_failed (double timeout, int try_again) {
+        (void)timeout;
+        (void)try_again;
+        throw typename shared_state<C>::lock_failed{};
+    }
 
-struct shared_state_traits_default {
-#ifdef _DEBUG
-    // Disable timeouts during debug sessions by returning -1
-    int timeout_ms() { return 100; }
-    int verify_execution_time_ms() { return 50; }
-#else
-    int timeout_ms() { return 100; }
-    // Disable verify_execution in "release" as it incurs an extra overhead
-    int verify_execution_time_ms() { return -1; }
-#endif
-    VerifyExecutionTime::report report_func() { return 0; }
+    /**
+     was_locked and was_unlocked are called each time the mutex for this is
+     instance is locked and unlocked, respectively. Regardless if the lock
+     is a read-only lock or a read-and-write lock.
+     */
+    void was_locked () {}
+    void was_unlocked () {}
 };
 
 template<class C>
@@ -68,10 +69,10 @@ struct shared_state_traits: public shared_state_traits_default {};
 template<typename T>
 struct has_shared_state_traits
 {
-    // detect C::shared_state_traits::timeout_ms, assume
-    // verify_execution_time_ms and report_func are also present
+    // detect C::shared_state_traits::timeout, assume
+    // verify_execution_time and report_func are also present
     template<typename C>
-    static char test(decltype(&C::shared_state_traits::timeout_ms));
+    static char test(decltype(&C::shared_state_traits::timeout));
 
     template<typename C> // worst match
     static char (&test(...))[2];
@@ -111,7 +112,11 @@ template <class T> struct disable_if<false, T> {typedef T type;};
  * The shared_state class is a smart pointer that should guarantee thread-safe
  * access to objects, with
  *  - compile-time errors on missing locks,
- *  - run-time exceptions with backtraces on deadlocks and failed (timeout) locks,
+ *  - run-time exceptions on lock timeout, from all racing threads
+ *    participating in a deadlock.
+ *
+ * It should be extensible enough to let clients efficiently add features like
+ *  - backtraces on failed locks,
  *  - run-time warnings on locks that are kept long enough to make it likely
  *    that other simultaneous lock attempts will fail.
  *
@@ -182,24 +187,22 @@ template <class T> struct disable_if<false, T> {typedef T type;};
  * Performance and overhead
  * ------------------------
  * shared_state should cause an overhead of less than 0.1 microseconds in a
- * 'release' build when using 'no_lock_failed'.
+ * 'release' build when using 'try_write' or 'try_read'.
  *
- * shared_state should fail fast when using 'no_lock_failed', within 0.1
- * microseconds in a 'release' build.
+ * shared_state should fail within 0.1 microseconds in a 'release' build when
+ * using 'try_write' or 'try_read' on a busy lock.
  *
  * shared_state should cause an overhead of less than 0.3 microseconds in a
- * 'release' build when 'verify_execution_time_ms <= 0'.
- *
- * shared_state should cause an overhead of less than 1.5 microseconds in a
- * 'release' build when 'verify_execution_time_ms > 0'.
+ * 'release' build when using 'write' or 'read'.
  *
  *
- * Configuring timeouts
- * --------------------
- * It is possible to use different timeouts, different expected execution times
- * and to disable the timeout and expected execution time. Create a template
- * specialization of shared_state_traits to override the defaults. You can also
- * create an internal class called shared_state_traits within your type.
+ * Configuring timeouts and extending functionality
+ * ------------------------------------------------
+ * It is possible to use different timeouts, or disable timeouts, for different
+ * types. Create a template specialization of shared_state_traits to override
+ * the defaults. Alternatively you can also create an internal class called
+ * shared_state_traits within your type. See 'shared_state_traits_default' for
+ * more details.
  *
  *
  * Author: johan.b.gustafsson@gmail.com
@@ -217,20 +220,18 @@ public:
 
     shared_state () {}
 
-    /**
-     * If 'timeout_ms >= 0' read_ptr/write_ptr will try to lock until the timeout
-     * has passed and then throw a lock_failed exception. If 'timeout_ms < 0'
-     * they will block indefinitely until the lock becomes available.
-     *
-     * If 'verify_execution_time_ms >= 0' read_ptr/WritePTr will call
-     * report_func if the lock is kept longer than this value. With the default
-     * behaviour of VerifyExecutionTime if report_func = 0.
-     */
     template<class Y,
              class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
     explicit shared_state ( Y* p )
     {
         reset(p);
+    }
+
+    template<class Y,
+             class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
+    explicit shared_state ( Y* p, std::shared_ptr<details> dp )
+    {
+        reset(p, dp);
     }
 
     template<class Y,
@@ -242,19 +243,23 @@ public:
     {
     }
 
+    void reset() {
+        p.reset ();
+        d.reset ();
+    }
+
     template<class Y,
              class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
-    void reset( Y* yp=0 ) {
-        if (yp)
-        {
-            p.reset (yp);
-            d.reset (new details);
-        }
-        else
-        {
-            p.reset ();
-            d.reset ();
-        }
+    void reset( Y* yp ) {
+        p.reset (yp);
+        d.reset (new details);
+    }
+
+    template<class Y,
+             class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
+    void reset( Y* yp, std::shared_ptr<details> dp) {
+        p.reset (yp);
+        d.swap (dp);
     }
 
     explicit operator bool() const { return p.get (); }
@@ -271,6 +276,9 @@ public:
             std::shared_ptr<details> datap = data.lock ();
             std::shared_ptr<T> pp = p.lock ();
 
+            // Either one could be kept separately from
+            // shared_state::unprotected() or shared_state::traits().
+            // Need both to reconstruct shared_state.
             if (pp && datap)
                 return shared_state(pp, datap);
 
@@ -323,7 +331,7 @@ public:
             if (p)
             {
                 l.unlock_shared ();
-                pc.reset ();
+                d->was_unlocked();
             }
 
             p.reset ();
@@ -340,7 +348,7 @@ public:
             lock ();
         }
 
-        read_ptr (const shared_state& vp, no_lock_failed)
+        read_ptr (const shared_state& vp, bool)
             :   l (vp.readWriteLock()),
                 p (vp.p),
                 d (vp.d)
@@ -348,14 +356,11 @@ public:
             if (!l.try_lock_shared ())
                 p.reset ();
             else
-            {
-                if (0<d->verify_execution_time_ms())
-                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
-            }
+                d->was_locked();
         }
 
         void lock() {
-            int timeout_ms = d->timeout_ms(); // l is not locked, but timeout_ms is const
+            double timeout = d->timeout(); // l is not locked, but timeout is required to be reentrant
 
             // try_lock_shared_for and lock_shared are unnecessarily complex if
             // the lock is available right away
@@ -363,12 +368,12 @@ public:
             {
                 // Got lock
             }
-            else if (timeout_ms < 0)
+            else if (timeout < 0)
             {
                 l.lock_shared ();
                 // Got lock
             }
-            else if (l.try_lock_shared_for (shared_state_chrono::milliseconds{timeout_ms}))
+            else if (l.try_lock_shared_for (shared_state_chrono::duration<double>{timeout}))
             {
                 // Got lock
             }
@@ -376,24 +381,23 @@ public:
             {
                 // If this is a deadlock, make both threads throw by keeping this thread blocked.
                 // See lock_failed::try_again
-                bool try_again = l.try_lock_shared_for (shared_state_chrono::milliseconds{timeout_ms});
+                bool try_again = l.try_lock_shared_for (shared_state_chrono::duration<double>{timeout});
                 if (try_again)
                     l.unlock_shared ();
 
-                SHARED_STATE_THROW_EXCEPTION(lock_failed{}
-                                      << typename lock_failed::timeout_value{timeout_ms}
-                                      << typename lock_failed::try_again_value{try_again});
+                d->template timeout_failed<T> (timeout, try_again);
+                // timeout_failed is expected to throw. But if it doesn't,
+                // make this behave as a null pointer
+                p.reset ();
             }
 
-            if (0<d->verify_execution_time_ms())
-                pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
+            d->was_locked();
         }
 
         shared_state_mutex& l;
         // p is 'const T', compared to shared_state::p which is just 'T'.
         std::shared_ptr<const T> p;
         std::shared_ptr<details> d;
-        VerifyExecutionTime::ptr pc;
     };
 
 
@@ -430,7 +434,7 @@ public:
             if (p)
             {
                 l.unlock ();
-                pc.reset ();
+                d->was_unlocked();
             }
 
             p.reset ();
@@ -449,7 +453,7 @@ public:
         }
 
         template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
-        write_ptr (const shared_state& vp, no_lock_failed)
+        write_ptr (const shared_state& vp, bool)
             :   l (vp.readWriteLock()),
                 p (vp.p),
                 d (vp.d)
@@ -457,45 +461,41 @@ public:
             if (!l.try_lock ())
                 p.reset ();
             else
-            {
-                if (0<d->verify_execution_time_ms())
-                    pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
-            }
+                d->was_locked();
         }
 
         // See read_ptr::lock
         void lock() {
-            int timeout_ms = d->timeout_ms();
+            double timeout = d->timeout();
 
             if (l.try_lock())
             {
             }
-            else if (timeout_ms < 0)
+            else if (timeout < 0)
             {
                 l.lock ();
             }
-            else if (l.try_lock_for (shared_state_chrono::milliseconds{timeout_ms}))
+            else if (l.try_lock_for (shared_state_chrono::duration<double>{timeout}))
             {
             }
             else
             {
-                bool try_again = l.try_lock_for (shared_state_chrono::milliseconds{timeout_ms});
+                bool try_again = l.try_lock_for (shared_state_chrono::duration<double>{timeout});
                 if (try_again)
                     l.unlock ();
 
-                SHARED_STATE_THROW_EXCEPTION(lock_failed{}
-                                      << typename lock_failed::timeout_value{timeout_ms}
-                                      << typename lock_failed::try_again_value{try_again});
+                d->template timeout_failed<T> (timeout, try_again);
+                // timeout_failed is expected to throw. But if it doesn't,
+                // make this behave as a null pointer
+                p.reset ();
             }
 
-            if (0<d->verify_execution_time_ms())
-                pc = VerifyExecutionTime::start (d->verify_execution_time_ms() * 1e-3f, d->report_func());
+            d->was_locked();
         }
 
         shared_state_mutex& l;
         std::shared_ptr<T> p;
         std::shared_ptr<details> d;
-        VerifyExecutionTime::ptr pc;
     };
 
 
@@ -515,20 +515,19 @@ public:
      *
      * If the lock was not obtained it doesn't throw any exception, but the
      * accessors return null pointers. This function fails much faster (about
-     * 30x faster) than setting timeout_ms=0 and discarding any lock_failed.
+     * 30x faster) than setting timeout=0 and discarding any lock_failed.
      */
-    read_ptr try_read() const { return read_ptr(*this, no_lock_failed()); }
+    read_ptr try_read() const { return read_ptr(*this, bool()); }
 
     /**
      * @brief try_write. See try_read.
      */
-    write_ptr try_write() { return write_ptr(*this, no_lock_failed()); }
+    write_ptr try_write() { return write_ptr(*this, bool()); }
 
     /**
      * @brief readWriteLock returns the mutex object for this instance.
      */
     shared_state_mutex& readWriteLock() const { return d->lock; }
-
 
     /**
      * @brief unprotected gives direct access to the unprotected state for
@@ -537,6 +536,12 @@ public:
      */
     std::shared_ptr<T> unprotected() { return p; }
     std::shared_ptr<const T> unprotected() const { return p; }
+
+    /**
+     * @brief details provides unprotected access to the instance of
+     * shared_state_traits used for this type.
+     */
+    std::shared_ptr<typename shared_state_traits_helper<T>::type> traits() const { return d; }
 
 private:
     template<typename Y>

@@ -2,6 +2,9 @@
 #include "exceptionassert.h"
 #include "expectexception.h"
 #include "trace_perf.h"
+#include "backtrace.h"
+#include "verifyexecutiontime.h"
+#include "tasktimer.h"
 
 #include <thread>
 #include <future>
@@ -70,22 +73,18 @@ private:
 
 
 template<>
-class shared_state_traits<A> {
+class shared_state_traits<A>: public shared_state_traits_default {
 public:
-    int timeout_ms() { return 1; }
-    int verify_execution_time_ms() { return -1; }
-    VerifyExecutionTime::report report_func() { return 0; }
+    double timeout() { return 0.001; }
 };
 
 
 class B
 {
 public:
-    class shared_state_traits {
+    class shared_state_traits: public shared_state_traits_default {
     public:
-        int timeout_ms() { return 10; }
-        int verify_execution_time_ms() { return -1; }
-        VerifyExecutionTime::report report_func() { return 0; }
+        double timeout() { return 0.010; }
     };
 
     typedef shared_state<B> ptr;
@@ -106,11 +105,9 @@ public:
 
 
 template<>
-class shared_state_traits<with_timeout_0> {
+class shared_state_traits<with_timeout_0>: public shared_state_traits_default {
 public:
-    int timeout_ms() { return 0; }
-    int verify_execution_time_ms() { return -1; }
-    VerifyExecutionTime::report report_func() { return 0; }
+    double timeout() { return 0; }
 };
 
 
@@ -121,23 +118,55 @@ public:
 };
 
 
-template<>
-class shared_state_traits<with_timeout_2_without_verify> {
+template<class T>
+class lock_failed_boost: public shared_state<T>::lock_failed, public virtual boost::exception {
 public:
-    int timeout_ms() { return 2; }
-    int verify_execution_time_ms() { return -1; }
-    VerifyExecutionTime::report report_func() { return 0; }
+    typedef boost::error_info<struct timeout, double> timeout_value;
+    typedef boost::error_info<struct try_again, bool> try_again_value;
+};
+
+
+template<>
+class shared_state_traits<with_timeout_2_without_verify>: public shared_state_traits_default {
+public:
+    typedef lock_failed_boost<with_timeout_2_without_verify> lock_failed_boost;
+
+    double timeout() { return 0.002; }
+    template<class T>
+    void timeout_failed (double timeout, int try_again) {
+        BOOST_THROW_EXCEPTION(lock_failed_boost{}
+                              << typename lock_failed_boost::timeout_value{timeout}
+                              << typename lock_failed_boost::try_again_value{try_again}
+                              << Backtrace::make (2));
+    }
 };
 
 
 class with_timeout_1_and_verify_1 {};
 
 template<>
-class shared_state_traits<with_timeout_1_and_verify_1> {
+class shared_state_traits<with_timeout_1_and_verify_1>: public shared_state_traits_default {
 public:
-    int timeout_ms() { return 1; }
-    int verify_execution_time_ms() { return 1; }
-    VerifyExecutionTime::report report_func() { return 0; }
+    double timeout() { return 0.001; }
+
+    void was_locked() {
+        if (verify_execution_time>=0)
+            verify = VerifyExecutionTime::start( verify_execution_time, exceeded_execution_time );
+    }
+
+    void was_unlocked() {
+        verify.reset ();
+    }
+
+    /*
+     If 'verify_execution_time >= 0' read_ptr/write_ptr will call was_unlocked
+     which will end up calling 'exceeded_execution_time' if the lock is kept
+     longer than this value. With the default behaviour of VerifyExecutionTime
+     if exceeded_execution_time = 0.
+    */
+    float verify_execution_time = 0.001;
+    VerifyExecutionTime::ptr verify;
+    VerifyExecutionTime::report exceeded_execution_time;
 };
 
 
@@ -337,23 +366,8 @@ void shared_state_test::
     }
 
 
-    // shared_state should cause an overhead of less than 1.5 microseconds in a
-    // 'release' build when 'verify_execution_time_ms >= 0'.
-    {
-        int N = 10000;
-
-        shared_state<C> c{new C};
-        TRACE_PERF("shared_state should cause a low default overhead");
-        for (int i=0; i<N; i++)
-        {
-            c.write ();
-            c.read ();
-        }
-    }
-
-
     // shared_state should cause an overhead of less than 0.3 microseconds in a
-    // 'release' build when 'verify_execution_time_ms < 0'.
+    // 'release' build.
     {
         int N = 10000;
 
@@ -363,7 +377,7 @@ void shared_state_test::
             a->noinlinecall ();
 
         A::ptr a2{new A};
-        trace_perf_.reset("shared_state should cause a low overhead without verify_execution_time_ms");
+        trace_perf_.reset("shared_state should cause a low default overhead");
         for (int i=0; i<N; i++)
         {
             a2.write ()->noinlinecall();
@@ -494,18 +508,25 @@ void WriteWhileReadingThread::
         EXPECT_EXCEPTION(B::ptr::lock_failed, writeTwice(b));
         EXPECT_EXCEPTION(lock_failed, writeTwice(b));
 
+#if not defined SHARED_STATE_NO_SHARED_MUTEX
         // may be able to lock for read twice if no other thread locks for write in-between, but it is not guaranteed
-        //readTwice(b);
+        readTwice(b);
+#endif
 
+#if not defined SHARED_STATE_NO_TIMEOUT
         // can't lock for read twice if another thread request a write in the middle
         // that write request will fail but try_again will make this thread throw the error as well
         std::future<void> f = std::async(std::launch::async, WriteWhileReadingThread{b});
-        EXPECT_EXCEPTION(lock_failed, readTwice(b));
+        {
+            EXPECT_EXCEPTION(lock_failed, readTwice(b));
+        }
 
         f.get ();
+#endif
     }
 
-    // It should produce run-time exceptions with backtraces on deadlocks
+    // It should be extensible enough to let clients efficiently add features like
+    //  - backtraces on failed locks
     {
         with_timeout_2_without_verify::ptr a{new with_timeout_2_without_verify};
         with_timeout_2_without_verify::ptr b{new with_timeout_2_without_verify};
@@ -526,21 +547,35 @@ void WriteWhileReadingThread::
         f.get ();
     }
 
-    // It should silently warn if a lock is kept so long that a simultaneous lock
-    // attempt would fail.
+    // It should be extensible enough to let clients efficiently add features like
+    //  - run-time warnings on locks that are kept long enough to make it likely
+    //    that other simultaneous lock attempts will fail.
     {
         shared_state<with_timeout_1_and_verify_1> a{new with_timeout_1_and_verify_1};
 
         bool did_report = false;
 
-        VerifyExecutionTime::set_default_report ([&did_report](float, float){ did_report = true; });
+        a.traits ()->exceeded_execution_time = [&did_report](float, float){ did_report = true; };
+
         auto w = a.write ();
-        VerifyExecutionTime::set_default_report (0);
 
         this_thread::sleep_for (chrono::milliseconds{10});
+
 
         EXCEPTION_ASSERT(!did_report);
         w.unlock ();
         EXCEPTION_ASSERT(did_report);
+
+        {
+            int N = 10000;
+
+            shared_state<C> c{new C};
+            TRACE_PERF("shared_state with VerifyExecutionTime should cause a low overhead");
+            for (int i=0; i<N; i++)
+            {
+                c.write ();
+                c.read ();
+            }
+        }
     }
 }

@@ -17,7 +17,7 @@
 
                 // Discard any timeout parameters
                 bool try_lock_for(...) { return try_lock(); }
-                bool try_lock_shared_for(...) { return try_lock(); }
+                bool try_lock_shared_for(...) { return try_lock_shared(); }
             };
         #else
             class shared_state_mutex: public boost::shared_mutex {
@@ -42,7 +42,6 @@
     #endif
 #else
     #include <mutex>
-
     namespace shared_state_chrono = std::chrono;
 
     #if defined SHARED_STATE_NO_TIMEOUT
@@ -54,10 +53,17 @@
                 void unlock_shared() { unlock(); }
 
                 bool try_lock_for(...) { return try_lock(); }
-                bool try_lock_shared_for(...) { return try_lock(); }
+                bool try_lock_shared_for(...) { return try_lock_shared(); }
             };
         #else
-            class shared_state_mutex: public std::shared_mutex {
+            //#include <shared_mutex>  // Requires C++14
+            //class shared_state_mutex: public std::shared_timed_mutex {
+            //public:
+            //    bool try_lock_for(...) { lock(); return true; }
+            //    bool try_lock_shared_for(...) { lock_shared(); return true; }
+            //};
+            #include "shared_timed_mutex_polyfill.h" // Requires C++11
+            class shared_state_mutex: public std_polyfill::shared_timed_mutex {
             public:
                 bool try_lock_for(...) { return try_lock(); }
                 bool try_lock_shared_for(...) { return try_lock_shared(); }

@@ -2,8 +2,8 @@
 #define SHARED_TIMED_MUTEX_POLYFILL_H
 
 
-// Implementation of a C++14-compatible shared_timed_mutex that only requires
-// C++11 and the boost header library.
+// Implementation of a somewhat C++14-compatible shared_timed_mutex that only
+// requires C++11 and the boost header library.
 //
 //
 // Brute derivative work of
@@ -22,7 +22,7 @@
 //  accompanying file LICENSE_1_0.txt or copy at
 //  http://www.boost.org/LICENSE_1_0.txt)
 
-#include <boost/assert.hpp>
+//#include <boost/assert.hpp>
 //#include <boost/static_assert.hpp>
 //#include <boost/thread/mutex.hpp>
 //#include <boost/thread/condition_variable.hpp>
@@ -33,11 +33,12 @@
 //#include <boost/chrono/system_clocks.hpp>
 //#include <boost/chrono/ceil.hpp>
 //#endif
-#include <boost/thread/detail/delete.hpp>
+//#include <boost/thread/detail/delete.hpp>
 
-#include <chrono>
-#include <mutex>
-#include <thread>
+# include <chrono>
+# include <mutex>
+# include <thread>
+# include <assert.h>
 
 namespace std_polyfill
 {
@@ -59,37 +60,37 @@ namespace std_polyfill
 
             void assert_free() const
             {
-                BOOST_ASSERT( ! exclusive );
-                BOOST_ASSERT( ! upgrade );
-                BOOST_ASSERT( shared_count==0 );
+                assert( ! exclusive );
+                assert( ! upgrade );
+                assert( shared_count==0 );
             }
 
             void assert_locked() const
             {
-                BOOST_ASSERT( exclusive );
-                BOOST_ASSERT( shared_count==0 );
-                BOOST_ASSERT( ! upgrade );
+                assert( exclusive );
+                assert( shared_count==0 );
+                assert( ! upgrade );
             }
 
             void assert_lock_shared () const
             {
-                BOOST_ASSERT( ! exclusive );
-                BOOST_ASSERT( shared_count>0 );
-                //BOOST_ASSERT( (! upgrade) || (shared_count>1));
+                assert( ! exclusive );
+                assert( shared_count>0 );
+                //assert( (! upgrade) || (shared_count>1));
                 // if upgraded there are at least 2 threads sharing the mutex,
                 // except when unlock_upgrade_and_lock has decreased the number of readers but has not taken yet exclusive ownership.
             }
 
             void assert_lock_upgraded () const
             {
-                BOOST_ASSERT( ! exclusive );
-                BOOST_ASSERT(  upgrade );
-                BOOST_ASSERT(  shared_count>0 );
+                assert( ! exclusive );
+                assert(  upgrade );
+                assert(  shared_count>0 );
             }
 
             void assert_lock_not_upgraded () const
             {
-                BOOST_ASSERT(  ! upgrade );
+                assert(  ! upgrade );
             }
 
             bool can_lock () const
@@ -188,7 +189,8 @@ namespace std_polyfill
 
     public:
 
-        BOOST_THREAD_NO_COPYABLE(shared_timed_mutex)
+        shared_timed_mutex(const shared_timed_mutex&) = delete;
+        shared_timed_mutex& operator=(const shared_timed_mutex&) = delete;
 
         shared_timed_mutex()
         {
