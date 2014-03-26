@@ -437,11 +437,11 @@ void shared_state_test::
 
         for (int i=0; i<readers.size (); i++)
             readers[i] = async(launch::async, [&,i](){
-                for(int j=0; j<N; j++) try { auto r = c.read (); this_thread::yield (); } catch (...) {}
+                for(int j=0; j<N; j++) c.read ();
             });
         for (int i=0; i<writers.size (); i++)
             writers[i] = async(launch::async, [&,i](){
-                for(int j=0; j<N; j++) try { auto w = c.write (); this_thread::yield (); } catch (...) {}
+                for(int j=0; j<N; j++) c.write ();
             });
 
         for (int i=0; i<readers.size (); i++)
