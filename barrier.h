@@ -95,9 +95,8 @@ public:
         }
         else
         {
-            while (step_ == step) {
+            while (step_ == step)
                 cv_.wait (l);
-            }
             return false;
         }
     }

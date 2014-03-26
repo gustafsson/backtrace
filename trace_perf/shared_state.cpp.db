@@ -8,7 +8,7 @@ shared_state should cause a low overhead : reference
 0.001
 --- unit 0.1 ms
 shared_state with VerifyExecutionTime should cause a low overhead
-0.01
+0.02
 --- unit 0.1 ms
 shared_state should fail fast with try_read
 0.06
@@ -20,4 +20,4 @@ shared_state should fail fast with timeout=0
 0.02
 --- unit 1 ms
 shared_state should handle lock contention efficiently
-0.04
+0.06

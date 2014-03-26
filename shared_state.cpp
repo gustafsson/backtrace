@@ -1,3 +1,8 @@
+/**
+  This file only contains unit tests for shared_state.
+  This file is not required for using shared_state.
+  */
+
 #include "shared_state.h"
 #include "exceptionassert.h"
 #include "expectexception.h"
