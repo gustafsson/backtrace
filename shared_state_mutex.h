@@ -16,15 +16,15 @@
                 void unlock_shared() { unlock(); }
 
                 // Discard any timeout parameters
-                bool try_lock_for(...) { return try_lock(); }
-                bool try_lock_shared_for(...) { return try_lock_shared(); }
+                bool try_lock_for(...) { lock(); return true; }
+                bool try_lock_shared_for(...) { lock_shared(); return true; }
             };
         #else
             class shared_state_mutex: public boost::shared_mutex {
             public:
                 // Discard any timeout parameters
-                bool try_lock_for(...) { return try_lock(); }
-                bool try_lock_shared_for(...) { return try_lock_shared(); }
+                bool try_lock_for(...) { lock(); return true; }
+                bool try_lock_shared_for(...) { lock_shared(); return true; }
             };
         #endif
     #elif defined SHARED_STATE_NO_SHARED_MUTEX
@@ -52,8 +52,8 @@
                 bool try_lock_shared() { return try_lock(); }
                 void unlock_shared() { unlock(); }
 
-                bool try_lock_for(...) { return try_lock(); }
-                bool try_lock_shared_for(...) { return try_lock_shared(); }
+                bool try_lock_for(...) { lock(); return true; }
+                bool try_lock_shared_for(...) { lock_shared(); return true; }
             };
         #else
             //#include <shared_mutex>  // Requires C++14
@@ -65,8 +65,8 @@
             #include "shared_timed_mutex_polyfill.h" // Requires C++11
             class shared_state_mutex: public std_polyfill::shared_timed_mutex {
             public:
-                bool try_lock_for(...) { return try_lock(); }
-                bool try_lock_shared_for(...) { return try_lock_shared(); }
+                bool try_lock_for(...) { lock(); return true; }
+                bool try_lock_shared_for(...) { lock_shared(); return true; }
             };
         #endif
     #elif defined SHARED_STATE_NO_SHARED_MUTEX

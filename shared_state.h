@@ -132,7 +132,7 @@ struct shared_state_traits_default {
      they will block indefinitely until the lock becomes available.
 
      Define SHARED_STATE_NO_TIMEOUT to disable timeouts altogether, all lock
-     attempts will then either fail or succeed immediately.
+     attempts will then block indefinitely until the lock becomes available.
 
      timeout() must be reentrant, i.e thread-safe without the support of
      shared_state.

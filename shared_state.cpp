@@ -408,9 +408,11 @@ void shared_state_test::
         }
 
         trace_perf_.reset("shared_state should fail fast with timeout=0");
+#ifndef SHARED_STATE_NO_TIMEOUT
         for (int i=0; i<N; i++) {
             EXPECT_EXCEPTION(lock_failed, a.write ());
         }
+#endif
     }
 }
 
@@ -504,19 +506,21 @@ void WriteWhileReadingThread::
     {
         B::ptr b{new B};
 
+#ifndef SHARED_STATE_NO_TIMEOUT
         // can't lock for write twice (recursive locks)
         EXPECT_EXCEPTION(B::ptr::lock_failed, writeTwice(b));
         EXPECT_EXCEPTION(lock_failed, writeTwice(b));
+#endif
 
-#if not defined SHARED_STATE_NO_SHARED_MUTEX
+#ifndef SHARED_STATE_NO_SHARED_MUTEX
         // may be able to lock for read twice if no other thread locks for write in-between, but it is not guaranteed
         readTwice(b);
 #endif
 
-#if not defined SHARED_STATE_NO_TIMEOUT
+#ifndef SHARED_STATE_NO_TIMEOUT
         // can't lock for read twice if another thread request a write in the middle
         // that write request will fail but try_again will make this thread throw the error as well
-        std::future<void> f = std::async(std::launch::async, WriteWhileReadingThread{b});
+        future<void> f = async(launch::async, WriteWhileReadingThread{b});
         {
             EXPECT_EXCEPTION(lock_failed, readTwice(b));
         }
@@ -525,6 +529,7 @@ void WriteWhileReadingThread::
 #endif
     }
 
+#ifndef SHARED_STATE_NO_TIMEOUT
     // It should be extensible enough to let clients efficiently add features like
     //  - backtraces on failed locks
     {
@@ -546,6 +551,7 @@ void WriteWhileReadingThread::
 
         f.get ();
     }
+#endif
 
     // It should be extensible enough to let clients efficiently add features like
     //  - run-time warnings on locks that are kept long enough to make it likely
