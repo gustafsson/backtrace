@@ -1,15 +1,23 @@
-shared_state should cause a low default overhead
-0.01
+shared_state should cause a low write overhead
+0.05
+--- unit 0.1 ms
+shared_state should cause a low read overhead
+0.05
 --- unit 0.1 ms
 shared_state should cause a low overhead : reference
-0.0007
+0.001
 --- unit 0.1 ms
 shared_state with VerifyExecutionTime should cause a low overhead
-0.06
+0.01
 --- unit 0.1 ms
-shared_state should fail fast with no_lock_failed
-0.0006
+shared_state should fail fast with try_read
+0.06
+--- unit 1 ms
+shared_state should fail fast with try_write
+0.06
 --- unit 1 ms
 shared_state should fail fast with timeout=0
 0.02
 --- unit 1 ms
+shared_state should handle lock contention efficiently
+0.04

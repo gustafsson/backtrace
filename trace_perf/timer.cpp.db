@@ -1,5 +1,5 @@
 it should measure short intervals as short
-2e-06
+4e-06
 --- smallest possible measure
 it should have a low overhead
 4e-06

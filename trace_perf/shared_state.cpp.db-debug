@@ -1,15 +1,6 @@
-shared_state should cause a low default overhead
-0.01
---- unit 0.1 ms
 shared_state should cause a low overhead : reference
 0.002
 --- unit 0.1 ms
 shared_state with VerifyExecutionTime should cause a low overhead
-0.02
+0.03
 --- unit 0.1 ms
-shared_state should fail fast with no_lock_failed
-0.001
---- unit 1 ms
-shared_state should fail fast with timeout=0
-0.02
---- unit 1 ms

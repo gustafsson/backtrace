@@ -10,7 +10,8 @@ fi
 (
 	make clean
 	make -j12
-	rm -rf trace_perf/dump
+	rm -rf trace_perf/dump trace_perf/summary
+
 	for a in `seq 100`; do
 		./backtrace-unittest
 	done

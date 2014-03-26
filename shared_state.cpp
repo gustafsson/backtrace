@@ -371,18 +371,19 @@ void shared_state_test::
     {
         int N = 10000;
 
-        shared_ptr<A> a{new A};
-        TRACE_PERF("shared_state should cause a low overhead : reference");
+        shared_ptr<A> a {new A};
+        TRACE_PERF ("shared_state should cause a low overhead : reference");
         for (int i=0; i<N; i++)
             a->noinlinecall ();
 
-        A::ptr a2{new A};
-        trace_perf_.reset("shared_state should cause a low default overhead");
+        A::ptr a2 {new A};
+        trace_perf_.reset ("shared_state should cause a low write overhead");
         for (int i=0; i<N; i++)
-        {
-            a2.write ()->noinlinecall();
-            a2.read ()->noinlinecall();
-        }
+            a2.write ()->noinlinecall ();
+
+        trace_perf_.reset ("shared_state should cause a low read overhead");
+        for (int i=0; i<N; i++)
+            a2.read ()->noinlinecall ();
     }
 
 
@@ -392,27 +393,56 @@ void shared_state_test::
     // shared_state should fail fast when using 'no_lock_failed', within 0.1
     // microseconds in a 'release' build.
     {
-        int N = 1000;
-
+        int N = 10000;
         with_timeout_0::ptr a{new with_timeout_0};
         with_timeout_0::const_ptr consta{a};
 
         // Make subsequent lock attempts fail
         with_timeout_0::ptr::write_ptr r = a.write ();
 
-        TRACE_PERF("shared_state should fail fast with no_lock_failed");
-        for (int i=0; i<N; i++) {
+        TRACE_PERF ("shared_state should fail fast with try_write");
+        for (int i=0; i<N; i++)
             a.try_write ();
+
+        trace_perf_.reset ("shared_state should fail fast with try_read");
+        for (int i=0; i<N; i++) {
             a.try_read ();
             consta.try_read ();
         }
 
-        trace_perf_.reset("shared_state should fail fast with timeout=0");
+        N = 1000;
+        trace_perf_.reset ("shared_state should fail fast with timeout=0");
 #ifndef SHARED_STATE_NO_TIMEOUT
         for (int i=0; i<N; i++) {
             EXPECT_EXCEPTION(lock_failed, a.write ());
         }
 #endif
+    }
+
+
+    // it should handle lock contention efficiently
+    {
+        TRACE_PERF ("shared_state should handle lock contention efficiently");
+
+        int N = 200;
+        vector<future<void>> readers(4);
+        vector<future<void>> writers(4);
+
+        shared_state<C> c(new C);
+
+        for (int i=0; i<readers.size (); i++)
+            readers[i] = async(launch::async, [&,i](){
+                for(int j=0; j<N; j++) try { auto r = c.read (); this_thread::yield (); } catch (...) {}
+            });
+        for (int i=0; i<writers.size (); i++)
+            writers[i] = async(launch::async, [&,i](){
+                for(int j=0; j<N; j++) try { auto w = c.write (); this_thread::yield (); } catch (...) {}
+            });
+
+        for (int i=0; i<readers.size (); i++)
+            readers[i].get();
+        for (int i=0; i<writers.size (); i++)
+            writers[i].get();
     }
 }
 
@@ -536,7 +566,7 @@ void WriteWhileReadingThread::
         with_timeout_2_without_verify::ptr a{new with_timeout_2_without_verify};
         with_timeout_2_without_verify::ptr b{new with_timeout_2_without_verify};
 
-        std::future<void> f = std::async(std::launch::async, UseAandB{a,b});
+        future<void> f = async(launch::async, UseAandB{a,b});
 
         try {
 
@@ -575,12 +605,11 @@ void WriteWhileReadingThread::
         {
             int N = 10000;
 
-            shared_state<C> c{new C};
             TRACE_PERF("shared_state with VerifyExecutionTime should cause a low overhead");
             for (int i=0; i<N; i++)
             {
-                c.write ();
-                c.read ();
+                a.write ();
+                a.read ();
             }
         }
     }
