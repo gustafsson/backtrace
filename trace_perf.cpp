@@ -71,7 +71,7 @@ void performance_traces::
         read_database(db, dbnames[i]);
 
     if (db.empty ())
-        cout << "Couldn't read databases in folder trace_perf" << endl;
+        cerr << "Couldn't read databases in folder trace_perf" << endl;
 
     dbs[sourcefilename] = db;
 }
@@ -102,12 +102,12 @@ void performance_traces::
         map<string, double>& db = i->second;
 
         if (!db.empty () && !missing_test_printed) {
-            cout << endl << "Missing tests ..." << endl;
+            cerr << endl << "Missing tests ..." << endl;
             missing_test_printed = true;
         }
 
         for (auto i = db.begin (); i!=db.end (); i++)
-            cout << '\'' << i->first  << '\'' << endl;
+            cerr << '\'' << i->first  << '\'' << endl;
     }
 }
 
@@ -133,23 +133,23 @@ void performance_traces::
         if (elapsed > expected)
         {
             if (!expected_miss) {
-                cout << endl << sourcefilename << " wasn't fast enough ..." << endl;
+                cerr << endl << sourcefilename << " wasn't fast enough ..." << endl;
                 if (PRINT_ATTEMPTED_DATABASE_FILES) {
                     vector<string> dbnames = get_database_names(sourcefilename);
                     for (unsigned i=0; i<dbnames.size (); i++)
-                        cout << dbnames[i] << endl;
+                        cerr << dbnames[i] << endl;
                 }
             }
 
-            cout << endl;
-            cout << info << endl;
-            cout << elapsed << " > " << expected << endl;
+            cerr << endl;
+            cerr << info << endl;
+            cerr << elapsed << " > " << expected << endl;
             expected_miss = true;
         }
     }
 
     if (expected_miss)
-        cout << endl;
+        cerr << endl;
 }
 
 
@@ -186,7 +186,7 @@ void performance_traces::
 
     ofstream o(filename);
     if (!o)
-        cout << "Couldn't dump performance entries to " << filename << endl;
+        cerr << "Couldn't dump performance entries to " << filename << endl;
 
     for (unsigned i=0; i<entries.size (); i++)
     {
