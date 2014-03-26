@@ -45,6 +45,7 @@ LFLAGS        = $(BACKTRACE_LFLAGS)
 TARGET        = ./backtrace-unittest
 OBJECTS       = \
 		backtrace.o \
+		barrier.o \
 		demangle.o \
 		detectgdb.o \
 		exceptionassert.o \
