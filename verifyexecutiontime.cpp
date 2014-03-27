@@ -78,7 +78,7 @@ void VerifyExecutionTime::
 {
     // It should warn if it takes longer than specified to execute a scope.
     {
-        float expected_time=0.003, execution_time=0;
+        float expected_time=0.004, execution_time=0;
 
         {
             VerifyExecutionTime::ptr x = VerifyExecutionTime::start (expected_time, [&](float, float v){

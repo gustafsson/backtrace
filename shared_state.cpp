@@ -10,6 +10,7 @@
 #include "backtrace.h"
 #include "verifyexecutiontime.h"
 #include "tasktimer.h"
+#include "barrier.h"
 
 #include <thread>
 #include <future>
@@ -78,8 +79,7 @@ private:
 
 
 template<>
-class shared_state_traits<A>: public shared_state_traits_default {
-public:
+struct shared_state_traits<A>: shared_state_traits_default {
     double timeout() { return 0.001; }
 };
 
@@ -87,8 +87,7 @@ public:
 class B
 {
 public:
-    class shared_state_traits: public shared_state_traits_default {
-    public:
+    struct shared_state_traits: shared_state_traits_default {
         double timeout() { return 0.010; }
     };
 
@@ -98,7 +97,29 @@ public:
 };
 
 
-class C {};
+struct C {
+    void somework(int N) const {
+        for (int i=0; i<N; i++)
+            rand();
+    }
+};
+
+
+struct C2: C {
+    struct shared_state_traits: shared_state_traits_default {
+        class shared_state_mutex: public std::mutex {
+        public:
+            void lock_shared() { lock(); }
+            bool try_lock_shared() { return try_lock(); }
+            void unlock_shared() { unlock(); }
+
+            bool try_lock_for(...) { lock(); return true; }
+            bool try_lock_shared_for(...) { lock_shared(); return true; }
+        };
+
+        double timeout() { return -1; }
+    };
+};
 
 
 class with_timeout_0
@@ -110,38 +131,39 @@ public:
 
 
 template<>
-class shared_state_traits<with_timeout_0>: public shared_state_traits_default {
-public:
+struct shared_state_traits<with_timeout_0>: shared_state_traits_default {
     double timeout() { return 0; }
 };
 
 
-class with_timeout_2_without_verify
-{
-public:
-    typedef shared_state<with_timeout_2_without_verify> ptr;
-};
+class with_timeout_2_with_boost_exception {};
 
 
 template<class T>
 class lock_failed_boost: public shared_state<T>::lock_failed, public virtual boost::exception {
 public:
     typedef boost::error_info<struct timeout, double> timeout_value;
-    typedef boost::error_info<struct try_again, bool> try_again_value;
 };
 
 
 template<>
-class shared_state_traits<with_timeout_2_without_verify>: public shared_state_traits_default {
-public:
-    typedef lock_failed_boost<with_timeout_2_without_verify> lock_failed_boost;
+struct shared_state_traits<with_timeout_2_with_boost_exception>: shared_state_traits_default {
+    typedef lock_failed_boost<with_timeout_2_with_boost_exception> lock_failed_boost;
 
     double timeout() { return 0.002; }
+
     template<class T>
-    void timeout_failed (double timeout, int try_again) {
+    void timeout_failed () {
+        /*
+        When a timeout occurs on a lock, this makes an attempt to detect
+        deadlocks. The thread with the timeout is blocked long enough (same
+        timeout as in the failed lock attempt) for any other thread that is
+        deadlocking with this thread to also fail its lock attempt.
+        */
+        this_thread::sleep_for (chrono::duration<double>{timeout()});
+
         BOOST_THROW_EXCEPTION(lock_failed_boost{}
-                              << typename lock_failed_boost::timeout_value{timeout}
-                              << typename lock_failed_boost::try_again_value{try_again}
+                              << typename lock_failed_boost::timeout_value{timeout()}
                               << Backtrace::make (2));
     }
 };
@@ -150,43 +172,31 @@ public:
 class with_timeout_1_and_verify_1 {};
 
 template<>
-class shared_state_traits<with_timeout_1_and_verify_1>: public shared_state_traits_default {
-public:
-    double timeout() { return 0.001; }
+struct shared_state_traits<with_timeout_1_and_verify_1>
+: shared_state_traits_default
+{
+  double timeout() { return 0.001; }
 
-    void was_locked() {
-        if (verify_execution_time>=0)
-            verify = VerifyExecutionTime::start( verify_execution_time, exceeded_execution_time );
-    }
+  void was_locked() {
+    start = chrono::high_resolution_clock::now ();
+  }
 
-    void was_unlocked() {
-        verify.reset ();
-    }
+  void was_unlocked() {
+    chrono::duration<double> diff = chrono::high_resolution_clock::now () - start;
+    if (diff.count() > verify_execution_time)
+      exceeded_execution_time (diff.count());
+  }
 
-    /*
-     If 'verify_execution_time >= 0' read_ptr/write_ptr will call was_unlocked
-     which will end up calling 'exceeded_execution_time' if the lock is kept
-     longer than this value. With the default behaviour of VerifyExecutionTime
-     if exceeded_execution_time = 0.
-    */
-    float verify_execution_time = 0.001;
-    VerifyExecutionTime::ptr verify;
-    VerifyExecutionTime::report exceeded_execution_time;
+  float verify_execution_time = 0.001;
+  function<void(double)> exceeded_execution_time = [](double T) {
+    cout << "Warning: Lock of MyType was held for " << T << "seconds" << endl;
+  };
+private:
+  chrono::high_resolution_clock::time_point start;
 };
 
-
-// Implements Callable
-class WriteWhileReadingThread
+struct WriteWhileReadingThread
 {
-public:
-    WriteWhileReadingThread(B::ptr b);
-
-    void operator()();
-
-private:
-    B::ptr b;
-
-public:
     static void test();
 };
 
@@ -423,32 +433,6 @@ void shared_state_test::
         }
 #endif
     }
-
-
-    // it should handle lock contention efficiently
-    {
-        TRACE_PERF ("shared_state should handle lock contention efficiently");
-
-        int N = 200;
-        vector<future<void>> readers(4);
-        vector<future<void>> writers(4);
-
-        shared_state<C> c(new C);
-
-        for (int i=0; i<readers.size (); i++)
-            readers[i] = async(launch::async, [&,i](){
-                for(int j=0; j<N; j++) c.read ();
-            });
-        for (int i=0; i<writers.size (); i++)
-            writers[i] = async(launch::async, [&,i](){
-                for(int j=0; j<N; j++) c.write ();
-            });
-
-        for (int i=0; i<readers.size (); i++)
-            readers[i].get();
-        for (int i=0; i<writers.size (); i++)
-            writers[i].get();
-    }
 }
 
 
@@ -469,25 +453,6 @@ int B::
 }
 
 
-WriteWhileReadingThread::
-        WriteWhileReadingThread(B::ptr b)
-    :
-      b(b)
-{}
-
-
-void WriteWhileReadingThread::
-        operator() ()
-{
-    // Make sure readTwice starts before this function
-    this_thread::sleep_for (chrono::milliseconds{1});
-
-    // Write access should fail as the first thread attempts recursive locks
-    // through multiple calls to read ().
-    EXPECT_EXCEPTION(lock_failed, b.write (); );
-}
-
-
 void readTwice(B::ptr b) {
     // int i = b.read()->work_a_lot(1) + b.read()->work_a_lot(2);
     // faster than default timeout
@@ -504,34 +469,6 @@ void writeTwice(B::ptr b) {
             + b.write ()->work_a_lot(2);
     (void) i;
 }
-
-
-// Implements Callable
-class UseAandB
-{
-public:
-    UseAandB(with_timeout_2_without_verify::ptr a, with_timeout_2_without_verify::ptr b) : a(a), b(b) {}
-
-    void operator()() {
-        try {
-
-            auto aw = a.write ();
-            this_thread::sleep_for (chrono::milliseconds{1});
-            auto bw = b.write ();
-
-        } catch (lock_failed& x) {
-            const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
-            EXCEPTION_ASSERT(backtrace);
-        }
-    }
-
-private:
-    with_timeout_2_without_verify::ptr a;
-    with_timeout_2_without_verify::ptr b;
-
-public:
-    static void test();
-};
 
 
 void WriteWhileReadingThread::
@@ -554,10 +491,22 @@ void WriteWhileReadingThread::
 
 #ifndef SHARED_STATE_NO_TIMEOUT
         // can't lock for read twice if another thread request a write in the middle
-        // that write request will fail but try_again will make this thread throw the error as well
-        future<void> f = async(launch::async, WriteWhileReadingThread{b});
+        // that write request will fail and then this will succeed
+        future<void> f = async(launch::async, [&b](){
+            // Make sure readTwice starts before this function
+            this_thread::sleep_for (chrono::milliseconds{1});
+
+            // Write access should fail as the first thread attempts recursive locks
+            // through multiple calls to read ().
+            EXPECT_EXCEPTION(lock_failed, b.write (); );
+        });
+
         {
-            EXPECT_EXCEPTION(lock_failed, readTwice(b));
+#ifndef SHARED_STATE_NO_SHARED_MUTEX
+            readTwice(b);
+#else
+            EXPECT_EXCEPTION(lock_failed, readTwice(b) );
+#endif
         }
 
         f.get ();
@@ -568,23 +517,33 @@ void WriteWhileReadingThread::
     // It should be extensible enough to let clients efficiently add features like
     //  - backtraces on failed locks
     {
-        with_timeout_2_without_verify::ptr a{new with_timeout_2_without_verify};
-        with_timeout_2_without_verify::ptr b{new with_timeout_2_without_verify};
+        typedef shared_state<with_timeout_2_with_boost_exception> ptr;
+        ptr a{new with_timeout_2_with_boost_exception};
+        ptr b{new with_timeout_2_with_boost_exception};
 
-        future<void> f = async(launch::async, UseAandB{a,b});
+        spinning_barrier barrier(2);
 
-        try {
+        std::function<void(ptr,ptr)> m = [&barrier](ptr p1, ptr p2) {
+            try {
+                auto w1 = p1.write ();
+                barrier.wait ();
+                auto w2 = p2.write ();
 
-            auto bw = b.write ();
-            this_thread::sleep_for (chrono::milliseconds{1});
-            auto aw = a.write ();
+                // never reached
+                EXCEPTION_ASSERT(false);
+            } catch (lock_failed& x) {
+                // cheeck that a backtrace was embedded into the lock_failed exception
+                const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
+                EXCEPTION_ASSERT(backtrace);
+            }
+        };
 
-        } catch (lock_failed& x) {
-            const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
-            EXCEPTION_ASSERT(backtrace);
-        }
+        // Lock a and b in opposite order in f1 and f2
+        future<void> f1 = async(launch::async, [&](){ m (b, a); });
+        future<void> f2 = async(launch::async, [&](){ m (a, b); });
 
-        f.get ();
+        f1.get ();
+        f2.get ();
     }
 #endif
 
@@ -596,12 +555,12 @@ void WriteWhileReadingThread::
 
         bool did_report = false;
 
-        a.traits ()->exceeded_execution_time = [&did_report](float, float){ did_report = true; };
+        a.traits ()->exceeded_execution_time = [&did_report](float){ did_report = true; };
 
         auto w = a.write ();
 
+        // Wait to make VerifyExecutionTime detect that the lock was kept too long
         this_thread::sleep_for (chrono::milliseconds{10});
-
 
         EXCEPTION_ASSERT(!did_report);
         w.unlock ();
@@ -616,6 +575,75 @@ void WriteWhileReadingThread::
                 a.write ();
                 a.read ();
             }
+        }
+    }
+
+    // it should handle lock contention efficiently
+    // 'Mv' decides how long a lock should be kept
+    std::vector<int> Mv{100, 1000};
+    for (int l=0; l<Mv.size (); l++)
+    {
+        int M = Mv[l];
+        int N = 200;
+
+        // 'W' decides how often a worker should do a write instead of a read
+        std::vector<int> W{1, 10, 100, 1000};
+
+        for (int k=0; k<W.size (); k++)
+        {
+            int w = W[k];
+            TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently N=%d, M=%d, w=%d") % N % M % w).str());
+
+            vector<future<void>> workers(8);
+
+            shared_state<C> c {new C};
+
+            for (int i=0; i<workers.size (); i++)
+                workers[i] = async(launch::async, [&c,N,M,w](){
+                    for(int j=1; j<=N; j++)
+                        if (j%w)
+                            c.read ()->somework (M);
+                        else
+                            c.write ()->somework (M);
+                });
+
+            for (int i=0; i<workers.size (); i++)
+                workers[i].get ();
+        }
+
+        {
+            TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently reference N=%d, M=%d") % N % M).str());
+
+            vector<future<void>> workers(8);
+
+            shared_ptr<C> c {new C};
+
+            for (int i=0; i<workers.size (); i++)
+                workers[i] = async(launch::async, [&c,N,M](){
+                    for(int j=1; j<=N; j++)
+                        c->somework (M);
+                });
+
+            for (int i=0; i<workers.size (); i++)
+                workers[i].get ();
+        }
+
+        {
+            TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently simple N=%d, M=%d") % N % M).str());
+
+            vector<future<void>> workers(8);
+
+            // C2 doesn't have shared read-only access, so a read and a write lock are equivalent.
+            shared_state<C2> c2 {new C2};
+
+            for (int i=0; i<workers.size (); i++)
+                workers[i] = async(launch::async, [&c2,N,M](){
+                    for(int j=1; j<=N; j++)
+                        c2.write ()->somework (M);
+                });
+
+            for (int i=0; i<workers.size (); i++)
+                workers[i].get ();
         }
     }
 }

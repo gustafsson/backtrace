@@ -1,8 +1,8 @@
 spinning_barrier 80 threads, 20 times
-0.005
+0.01
 
 locking_barrier 80 threads, 20 times
-0.03
+0.05
 
 spinning_barrier 4 threads, 20 times
 30e-06

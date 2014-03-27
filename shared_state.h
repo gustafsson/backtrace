@@ -140,18 +140,11 @@ struct shared_state_traits_default {
     double timeout () { return 0.100; }
 
     /**
-     When a timeout occurs on a lock, shared_state makes an attempt to detect
-     deadlocks. The thread with the timeout is blocked with another lock
-     attempt long enough (same timeout as in the first attempt) for any other
-     thread that is deadlocking with this thread to also fail its lock attempt.
-
-     The try_again value describes whether that second lock attempt succeeded,
-     but even if it succeeds lock_failed is still thrown.
+     If 'timeout_failed' does not frow the attempted read_ptr or write_ptr will
+     become a null-pointer.
      */
     template<class C>
-    void timeout_failed (double timeout, int try_again) {
-        (void)timeout;
-        (void)try_again;
+    void timeout_failed () {
         throw typename shared_state<C>::lock_failed{};
     }
 
@@ -162,6 +155,16 @@ struct shared_state_traits_default {
      */
     void was_locked () {}
     void was_unlocked () {}
+
+    /**
+     * @brief shared_state_mutex defines which mutex shared_state will use to
+     * protect this type. The default is to use a mutex with support for shared
+     * read access but exclusive write access. Depending on your usage pattern
+     * it might be better to use a simpler type.
+     *
+     * See shared_state_mutex.h for possible implementations.
+     */
+    typedef ::shared_state_mutex shared_state_mutex;
 };
 
 template<class C>
@@ -184,6 +187,7 @@ struct shared_state_details: public shared_state_traits_helper<T>::type {
     shared_state_details(shared_state_details const&) = delete;
     shared_state_details& operator=(shared_state_details const&) = delete;
 
+    typedef typename shared_state_traits_helper<T>::type::shared_state_mutex shared_state_mutex;
     mutable shared_state_mutex lock;
 };
 
@@ -366,22 +370,17 @@ public:
             }
             else
             {
-                // If this is a deadlock, make both threads throw by keeping this thread blocked.
-                // See lock_failed::try_again
-                bool try_again = l.try_lock_shared_for (shared_state_chrono::duration<double>{timeout});
-                if (try_again)
-                    l.unlock_shared ();
-
-                d->template timeout_failed<T> (timeout, try_again);
+                d->template timeout_failed<T> ();
                 // timeout_failed is expected to throw. But if it doesn't,
                 // make this behave as a null pointer
                 p.reset ();
+                return; // don't call was_locked
             }
 
             d->was_locked();
         }
 
-        shared_state_mutex& l;
+        typename details::shared_state_mutex& l;
         // p is 'const T', compared to shared_state::p which is just 'T'.
         std::shared_ptr<const T> p;
         std::shared_ptr<details> d;
@@ -467,20 +466,15 @@ public:
             }
             else
             {
-                bool try_again = l.try_lock_for (shared_state_chrono::duration<double>{timeout});
-                if (try_again)
-                    l.unlock ();
-
-                d->template timeout_failed<T> (timeout, try_again);
-                // timeout_failed is expected to throw. But if it doesn't,
-                // make this behave as a null pointer
+                d->template timeout_failed<T> ();
                 p.reset ();
+                return;
             }
 
             d->was_locked();
         }
 
-        shared_state_mutex& l;
+        typename details::shared_state_mutex& l;
         std::shared_ptr<T> p;
         std::shared_ptr<details> d;
     };
@@ -514,7 +508,7 @@ public:
     /**
      * @brief readWriteLock returns the mutex object for this instance.
      */
-    shared_state_mutex& readWriteLock() const { return d->lock; }
+    typename details::shared_state_mutex& readWriteLock() const { return d->lock; }
 
     /**
      * @brief unprotected gives direct access to the unprotected state for
