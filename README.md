@@ -41,42 +41,72 @@ Somewhere else
     }
 ````
 
-#### VolatilePtr example ####
-_The VolatilePtr class should guarantee thread-safe access to objects, with compile-time errors on missing locks and run-time exceptions with backtraces on deadlocks._
+#### shared_state example ####
+_The shared\_state<T> class is a smart pointer that should guarantee thread-safe access to objects of type T._
 
-Make an object thread-safe by inheriting from VolatilePtr and make all member variables private or protected.
+Make an instance of an object thread-safe by storing it in a shared\_state smart pointer.
 
 ````cpp
-class A: public VolatilePtr<A>
-{
-public:
-    void a (int v);
-};
+    class A {
+    public:
+      void foo();
+      void bar() const;
+    };
 ````
 
 Then use the object like so:
 
 ````cpp
-    A::Ptr mya (new A);
-    
-    // can't write to mya
-    // compile time error: passing 'volatile A' as 'this' argument of 'void A::a (int)' discards qualifiers
-    // mya->a (5);
-    
+    // Read and write access
     {
-        // Lock for write access
-        A::WritePtr w (mya);
-        w->a (5);
-        // Unlock on out-of-scope
+      auto w = a.write();
+      w->foo();
+      w->bar();
     }
-    
-    // Lock for a single call
-    A::WritePtr (mya)->a (5);
-    write1(mya)->a (5);
+
+    // Read-only access
+    {
+      auto r = a.read();
+      r->bar();
+    }
 ````
 
-The idea is to use a pointer to a volatile object when juggling references to objects. From a volatile object you can only access methods that are volatile (just like only const methods are accessible from a const object). Using the volatile classifier blocks access to use any "regular" (non-volatile) methods.
+.read() and .write() creates thread-safe critical sections for shared read-only access when using .read() and for mutually exclusive read-and-write access using .write(). They both throw exceptions on lock timeout, embed a backtrace in an exception object like this:
 
+````cpp
+template<class T>
+class lock_failed_boost
+  : public shared_state<T>::lock_failed
+  , public virtual boost::exception
+{};
+
+
+template<>
+struct shared_state_traits<A>
+    : shared_state_traits_default
+{
+  template<class T>
+  void timeout_failed () {
+    this_thread::sleep_for (chrono::duration<double>{timeout()});
+
+    BOOST_THROW_EXCEPTION(lock_failed_boost<A>{} << Backtrace::make ());
+  }
+};
+
+... {
+  shared_state<A> a(new A);
+  ...
+  try {
+    auto w = a.write();
+    ...
+  } catch (lock_failed& x) {
+    const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
+    ...
+  }
+... }
+````
+
+See shared\_state.pdf or shared\_state.h for details.
 
 #### ExceptionAssert example ####
 _The ExceptionAssert class should store details about an assertion that failed._
