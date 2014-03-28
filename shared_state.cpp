@@ -140,16 +140,14 @@ class with_timeout_2_with_boost_exception {};
 
 
 template<class T>
-class lock_failed_boost: public shared_state<T>::lock_failed, public virtual boost::exception {
-public:
-    typedef boost::error_info<struct timeout, double> timeout_value;
-};
+class lock_failed_boost
+        : public shared_state<T>::lock_failed
+        , public virtual boost::exception
+{};
 
 
 template<>
 struct shared_state_traits<with_timeout_2_with_boost_exception>: shared_state_traits_default {
-    typedef lock_failed_boost<with_timeout_2_with_boost_exception> lock_failed_boost;
-
     double timeout() { return 0.002; }
 
     template<class T>
@@ -162,9 +160,8 @@ struct shared_state_traits<with_timeout_2_with_boost_exception>: shared_state_tr
         */
         this_thread::sleep_for (chrono::duration<double>{timeout()});
 
-        BOOST_THROW_EXCEPTION(lock_failed_boost{}
-                              << typename lock_failed_boost::timeout_value{timeout()}
-                              << Backtrace::make (2));
+        BOOST_THROW_EXCEPTION(lock_failed_boost<T>()
+                              << Backtrace::make ());
     }
 };
 

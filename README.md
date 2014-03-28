@@ -89,7 +89,7 @@ struct shared_state_traits<A>
   void timeout_failed () {
     this_thread::sleep_for (chrono::duration<double>{timeout()});
 
-    BOOST_THROW_EXCEPTION(lock_failed_boost<A>{} << Backtrace::make ());
+    BOOST_THROW_EXCEPTION(lock_failed_boost<T>{} << Backtrace::make ());
   }
 };
 
