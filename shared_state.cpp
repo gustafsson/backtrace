@@ -218,6 +218,7 @@ void shared_state_test::
 
     // Lock for a single call
     mya.write()->method (5);
+    mya->method (5);
 
     {
         // Lock for read access
@@ -241,12 +242,18 @@ void shared_state_test::
 
     // Can get read-only access from a const_ptr.
     consta.read ()->const_method ();
+    consta->const_method (); // <- read lock
+    mya->const_method ();    // <- write lock
 
     // Can get unprotected access without locks
     mya.unprotected ()->method (1);
 
     // Can not get write access to a const pointer.
     // consta.write (); // error
+
+    // Can get a locked pointer
+    mya.get ()->method (1);
+    consta.get ()->const_method ();
 
     // Conditional critical section, don't wait if the lock is not available
     if (auto w = mya.try_write ())

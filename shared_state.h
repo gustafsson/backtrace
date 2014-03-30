@@ -23,7 +23,7 @@
  *
  *        shared_state<A> a {new A};
  *        ...
- *        a.write ()->foo ();         // Mutually exclusive write access
+ *        a->foo ();         // Mutually exclusive write access
  *
  *
  * Using shared_state
@@ -37,7 +37,11 @@
  * There are a couple of ways to access the data in 'p'. Call "p.write()" to
  * enter a critical section for read and write access. The critical section is
  * thread-safe and exception-safe through a mutex lock and RAII. p.write() can
- * be used either in a single function call:
+ * be used either implicitly in a single function call:
+ *
+ *        p->...
+ *
+ * Equivalent to:
  *
  *        p.write ()->...
  *
@@ -205,7 +209,7 @@ private:
     typedef shared_state_details<typename std::remove_const<T>::type> details;
 
 public:
-    typedef T element_type;
+    typedef typename std::remove_const<T>::type element_type;
 
     class lock_failed: public ::lock_failed {};
 
@@ -381,8 +385,8 @@ public:
         }
 
         typename details::shared_state_mutex& l;
-        // p is 'const T', compared to shared_state::p which is just 'T'.
-        std::shared_ptr<const T> p;
+        // p is 'const element_type', compared to shared_state::p which is just 'T'.
+        std::shared_ptr<const element_type> p;
         std::shared_ptr<details> d;
     };
 
@@ -429,7 +433,7 @@ public:
     private:
         friend class shared_state;
 
-        template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
+        template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
         explicit write_ptr (const shared_state& vp)
             :   l (vp.readWriteLock()),
                 p (vp.p),
@@ -438,7 +442,7 @@ public:
             lock ();
         }
 
-        template<class = typename disable_if <std::is_convertible<const element_type*, element_type*>::value>::type>
+        template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
         write_ptr (const shared_state& vp, bool)
             :   l (vp.readWriteLock()),
                 p (vp.p),
@@ -523,6 +527,19 @@ public:
      * shared_state_traits used for this type.
      */
     std::shared_ptr<typename shared_state_traits_helper<T>::type> traits() const { return d; }
+
+
+#ifndef SHARED_STATE_DISABLE_IMPLICIT_LOCK
+    static write_ptr lock_type_test(element_type*);
+    static read_ptr lock_type_test(element_type const*);
+    typedef decltype(lock_type_test((T*)0)) lock_type;
+
+    lock_type operator-> () { return lock_type(*this); }
+    lock_type get () { return lock_type(*this); }
+
+    read_ptr operator-> () const { return read_ptr(*this); }
+    read_ptr get () const { return read_ptr(*this); }
+#endif
 
 private:
     template<typename Y>
