@@ -4,3 +4,5 @@ shared_state should cause a low overhead : reference
 shared_state with VerifyExecutionTime should cause a low overhead
 0.03
 --- unit 0.1 ms
+shared_state should handle lock contention efficiently N=200, M=1000, w=10
+0.04

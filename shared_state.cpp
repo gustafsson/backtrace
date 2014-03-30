@@ -13,6 +13,7 @@
 
 #include <thread>
 #include <future>
+#include <condition_variable>
 
 // scroll down to void shared_state_test::test () to see more examples
 
@@ -195,6 +196,34 @@ private:
   chrono::high_resolution_clock::time_point start;
 };
 
+
+class base {
+public:
+    struct shared_state_traits: shared_state_traits_default {
+        base* b;
+
+        void was_locked () {
+            EXCEPTION_ASSERT_EQUALS(++b->step, 1);
+        }
+        void was_unlocked () {
+            ++b->step;
+        }
+    };
+
+    virtual ~base() {}
+
+    int step = 0;
+};
+
+
+class derivative: public base {
+public:
+    void method() {
+        EXCEPTION_ASSERT_EQUALS(++step, 2);
+    }
+};
+
+
 struct WriteWhileReadingThread
 {
     static void test();
@@ -238,7 +267,7 @@ void shared_state_test::
     mya.read ()->const_method ();
 
     // Create a reference to a const instance
-    A::const_ptr consta (mya);
+    shared_state<const A> consta {mya};
 
     // Can get read-only access from a const_ptr.
     consta.read ()->const_method ();
@@ -254,6 +283,7 @@ void shared_state_test::
     // Can get a locked pointer
     mya.get ()->method (1);
     consta.get ()->const_method ();
+    (*mya.write ()).method (1);
 
     // Conditional critical section, don't wait if the lock is not available
     if (auto w = mya.try_write ())
@@ -439,6 +469,29 @@ void shared_state_test::
             EXPECT_EXCEPTION(lock_failed, a.write ());
         }
 #endif
+    }
+
+    // It should keep the lock for the duration of a statement
+    shared_state<base> b(new derivative);
+    b.traits ()->b = b.unprotected ().get ();
+    dynamic_cast<derivative*>(b.write ().get ())->method ();
+    EXCEPTION_ASSERT_EQUALS(b.unprotected ()->step, 3);
+
+    condition_variable_any cond;
+    future<void> f = async(launch::async, [&](){
+        // Make sure readTwice starts before this function
+        auto w = mya.write ();
+        w->method (1);
+        // wait unlocks w before waiting
+        cond.wait(w);
+        // w is locked again when wait return
+        w->method (2);
+    });
+
+    while (future_status::timeout == f.wait_for(std::chrono::milliseconds(1)))
+    {
+        mya.write ()->method (3);
+        cond.notify_one ();
     }
 }
 

@@ -158,6 +158,11 @@ struct shared_state_traits_default {
      is a read-only lock or a read-and-write lock.
      */
     void was_locked () {}
+
+    /**
+     * was_unlocked is called in the destructor of the lock wrappers
+     * read_ptr/write_ptr, throwing from here will thus crash the program.
+     */
     void was_unlocked () {}
 
     /**
@@ -201,8 +206,7 @@ template <bool, class Tp = void> struct disable_if {};
 template <class T> struct disable_if<false, T> {typedef T type;};
 
 
-
-template<typename T>
+template<class T>
 class shared_state final
 {
 private:
@@ -257,11 +261,6 @@ public:
         d.swap (dp);
     }
 
-    explicit operator bool() const { return p.get (); }
-    bool operator== (const shared_state& b) const { return p.get () == b.p.get (); }
-    bool operator!= (const shared_state& b) const { return !(*this == b); }
-    bool operator < (const shared_state& b) const { return this->p < b.p; }
-
     class weak_ptr {
     public:
         weak_ptr() {}
@@ -302,8 +301,11 @@ public:
      */
     class read_ptr {
     public:
+        read_ptr() {}
+
         read_ptr(read_ptr&& b)
-            :   l (b.l)
+            :   l (b.l),
+                t (b.t)
         {
             p.swap (b.p);
             d.swap (b.d);
@@ -317,45 +319,14 @@ public:
             unlock ();
         }
 
-        const T* operator-> () const { return p.get (); }
-        const T& operator* () const { return *p; }
-        const T* get () const { return p.get (); }
-        explicit operator bool() const { return (bool)p; }
-
-        void unlock() {
-            if (p)
-            {
-                l.unlock_shared ();
-                d->was_unlocked();
-            }
-
-            p.reset ();
-        }
-
-    private:
-        friend class shared_state;
-
-        explicit read_ptr (const shared_state& vp)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d)
-        {
-            lock ();
-        }
-
-        read_ptr (const shared_state& vp, bool)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d)
-        {
-            if (!l.try_lock_shared ())
-                p.reset ();
-            else
-                d->was_locked();
-        }
+        const T* operator-> () const { return t; }
+        const T& operator* () const { return *t; }
+        const T* get () const { return t; }
+        explicit operator bool() const { return (bool)t; }
 
         void lock() {
-            double timeout = d->timeout(); // l is not locked, but timeout is required to be reentrant
+            // l is not locked, but timeout is required to be reentrant
+            double timeout = d->timeout();
 
             // try_lock_shared_for and lock_shared are unnecessarily complex if
             // the lock is available right away
@@ -381,13 +352,50 @@ public:
                 return; // don't call was_locked
             }
 
+            t = p.get ();
             d->was_locked();
+        }
+
+        void unlock() {
+            if (t)
+            {
+                t = 0;
+                l.unlock_shared ();
+                d->was_unlocked();
+            }
+        }
+
+    private:
+        friend class shared_state;
+
+        explicit read_ptr (const shared_state& vp)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                t (0)
+        {
+            lock ();
+        }
+
+        read_ptr (const shared_state& vp, bool)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                t (0)
+        {
+            if (!l.try_lock_shared ())
+                p.reset ();
+            else {
+                t = p.get ();
+                d->was_locked();
+            }
         }
 
         typename details::shared_state_mutex& l;
         // p is 'const element_type', compared to shared_state::p which is just 'T'.
         std::shared_ptr<const element_type> p;
         std::shared_ptr<details> d;
+        const element_type* t;
     };
 
 
@@ -401,8 +409,11 @@ public:
      */
     class write_ptr {
     public:
+        write_ptr() {}
+
         write_ptr(write_ptr&& b)
-            :   l (b.l)
+            :   l (b.l),
+                t (b.t)
         {
             p.swap (b.p);
             d.swap (b.d);
@@ -415,44 +426,10 @@ public:
             unlock ();
         }
 
-        T* operator-> () const { return p.get (); }
-        T& operator* () const { return *p; }
-        T* get () const { return p.get (); }
-        explicit operator bool() const { return (bool)p; }
-
-        void unlock() {
-            if (p)
-            {
-                l.unlock ();
-                d->was_unlocked();
-            }
-
-            p.reset ();
-        }
-
-    private:
-        friend class shared_state;
-
-        template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
-        explicit write_ptr (const shared_state& vp)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d)
-        {
-            lock ();
-        }
-
-        template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
-        write_ptr (const shared_state& vp, bool)
-            :   l (vp.readWriteLock()),
-                p (vp.p),
-                d (vp.d)
-        {
-            if (!l.try_lock ())
-                p.reset ();
-            else
-                d->was_locked();
-        }
+        T* operator-> () const { return t; }
+        T& operator* () const { return *t; }
+        T* get () const { return t; }
+        explicit operator bool() const { return (bool)t; }
 
         // See read_ptr::lock
         void lock() {
@@ -475,12 +452,51 @@ public:
                 return;
             }
 
+            t = p.get ();
             d->was_locked();
+        }
+
+        void unlock() {
+            if (t)
+            {
+                t = 0;
+                l.unlock ();
+                d->was_unlocked();
+            }
+        }
+
+    private:
+        friend class shared_state;
+
+        template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
+        explicit write_ptr (const shared_state& vp)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                t (0)
+        {
+            lock ();
+        }
+
+        template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
+        write_ptr (const shared_state& vp, bool)
+            :   l (vp.readWriteLock()),
+                p (vp.p),
+                d (vp.d),
+                t (0)
+        {
+            if (!l.try_lock ())
+                p.reset ();
+            else {
+                t = p.get ();
+                d->was_locked();
+            }
         }
 
         typename details::shared_state_mutex& l;
         std::shared_ptr<T> p;
         std::shared_ptr<details> d;
+        T* t;
     };
 
 
@@ -493,7 +509,7 @@ public:
      * @brief write provides thread safe read and write access. Not accessible
      * if T is const.
      */
-    write_ptr write() { return write_ptr(*this); }
+    write_ptr write() const { return write_ptr(*this); }
 
     /**
      * @brief try_read obtains the lock only if it is readily available.
@@ -507,7 +523,7 @@ public:
     /**
      * @brief try_write. See try_read.
      */
-    write_ptr try_write() { return write_ptr(*this, bool()); }
+    write_ptr try_write() const { return write_ptr(*this, bool()); }
 
     /**
      * @brief readWriteLock returns the mutex object for this instance.
@@ -519,8 +535,7 @@ public:
      * using other synchornization mechanisms. Consider using read() or write()
      * instead.
      */
-    std::shared_ptr<T> unprotected() { return p; }
-    std::shared_ptr<const T> unprotected() const { return p; }
+    std::shared_ptr<T> unprotected() const { return p; }
 
     /**
      * @brief details provides unprotected access to the instance of
@@ -528,18 +543,21 @@ public:
      */
     std::shared_ptr<typename shared_state_traits_helper<T>::type> traits() const { return d; }
 
+    explicit operator bool() const { return p.get (); }
+    bool operator== (const shared_state& b) const { return p.get () == b.p.get (); }
+    bool operator!= (const shared_state& b) const { return !(*this == b); }
+    bool operator < (const shared_state& b) const { return this->p < b.p; }
 
 #ifndef SHARED_STATE_DISABLE_IMPLICIT_LOCK
     static write_ptr lock_type_test(element_type*);
     static read_ptr lock_type_test(element_type const*);
     typedef decltype(lock_type_test((T*)0)) lock_type;
 
-    lock_type operator-> () { return lock_type(*this); }
-    lock_type get () { return lock_type(*this); }
-
-    read_ptr operator-> () const { return read_ptr(*this); }
-    read_ptr get () const { return read_ptr(*this); }
+    lock_type operator-> () const { return lock_type(*this); }
+    lock_type get () const { return lock_type(*this); }
 #endif
+
+    bool unique() const { return p.unique (); }
 
 private:
     template<typename Y>
