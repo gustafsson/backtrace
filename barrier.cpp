@@ -44,7 +44,7 @@ static void evalate(int N) {
 
     int M = 20;
 
-    for (int i=0; i<f.size (); i++)
+    for (unsigned i=0; i<f.size (); i++)
         f[i] = async(launch::async, [&]()
         {
             sb.wait ();
@@ -60,11 +60,11 @@ static void evalate(int N) {
             sb.wait ();
     }
 
-    for (int i=0; i<f.size (); i++)
+    for (unsigned i=0; i<f.size (); i++)
         f[i].get();
 
 
-    for (int i=0; i<f.size (); i++)
+    for (unsigned i=0; i<f.size (); i++)
         f[i] = async(launch::async, [&]()
         {
             lb.wait ();
@@ -80,7 +80,7 @@ static void evalate(int N) {
             lb.wait ();
     }
 
-    for (int i=0; i<f.size (); i++)
+    for (unsigned i=0; i<f.size (); i++)
         f[i].get();
 }
 

@@ -8,7 +8,6 @@
 #include "expectexception.h"
 #include "trace_perf.h"
 #include "backtrace.h"
-#include "verifyexecutiontime.h"
 #include "tasktimer.h"
 #include "barrier.h"
 
@@ -44,7 +43,11 @@ private:
 
 class ThrowInConstructor {
 public:
-    ThrowInConstructor(bool*outer_destructor, bool*inner_destructor):inner(inner_destructor) {
+    ThrowInConstructor(bool*outer_destructor, bool*inner_destructor)
+        :
+          outer_destructor(outer_destructor),
+          inner(inner_destructor)
+    {
         throw 1;
     }
 
@@ -578,7 +581,7 @@ void WriteWhileReadingThread::
     // it should handle lock contention efficiently
     // 'Mv' decides how long a lock should be kept
     std::vector<int> Mv{100, 1000};
-    for (int l=0; l<Mv.size (); l++)
+    for (unsigned l=0; l<Mv.size (); l++)
     {
         int M = Mv[l];
         int N = 200;
@@ -586,7 +589,7 @@ void WriteWhileReadingThread::
         // 'W' decides how often a worker should do a write instead of a read
         std::vector<int> W{1, 10, 100, 1000};
 
-        for (int k=0; k<W.size (); k++)
+        for (unsigned k=0; k<W.size (); k++)
         {
             int w = W[k];
             TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently N=%d, M=%d, w=%d") % N % M % w).str());
@@ -595,7 +598,7 @@ void WriteWhileReadingThread::
 
             shared_state<C> c {new C};
 
-            for (int i=0; i<workers.size (); i++)
+            for (unsigned i=0; i<workers.size (); i++)
                 workers[i] = async(launch::async, [&c,N,M,w](){
                     for(int j=1; j<=N; j++)
                         if (j%w)
@@ -604,7 +607,7 @@ void WriteWhileReadingThread::
                             c.write ()->somework (M);
                 });
 
-            for (int i=0; i<workers.size (); i++)
+            for (unsigned i=0; i<workers.size (); i++)
                 workers[i].get ();
         }
 
@@ -615,13 +618,13 @@ void WriteWhileReadingThread::
 
             shared_ptr<C> c {new C};
 
-            for (int i=0; i<workers.size (); i++)
+            for (unsigned i=0; i<workers.size (); i++)
                 workers[i] = async(launch::async, [&c,N,M](){
                     for(int j=1; j<=N; j++)
                         c->somework (M);
                 });
 
-            for (int i=0; i<workers.size (); i++)
+            for (unsigned i=0; i<workers.size (); i++)
                 workers[i].get ();
         }
 
@@ -633,13 +636,13 @@ void WriteWhileReadingThread::
             // C2 doesn't have shared read-only access, so a read and a write lock are equivalent.
             shared_state<C2> c2 {new C2};
 
-            for (int i=0; i<workers.size (); i++)
+            for (unsigned i=0; i<workers.size (); i++)
                 workers[i] = async(launch::async, [&c2,N,M](){
                     for(int j=1; j<=N; j++)
                         c2.write ()->somework (M);
                 });
 
-            for (int i=0; i<workers.size (); i++)
+            for (unsigned i=0; i<workers.size (); i++)
                 workers[i].get ();
         }
     }
