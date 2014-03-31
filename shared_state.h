@@ -77,7 +77,7 @@
  * mutable state:
  *
  *        {
- *          auto m = p.unprotected ();
+ *          MyType* m = p.raw ();
  *          m->...
  *          m->...
  *        }
@@ -531,11 +531,11 @@ public:
     typename details::shared_state_mutex& readWriteLock() const { return d->lock; }
 
     /**
-     * @brief unprotected gives direct access to the unprotected state for
-     * using other synchornization mechanisms. Consider using read() or write()
-     * instead.
+     * @brief raw gives direct access to the unprotected state. The client is
+     * responsible for using other synchornization mechanisms, consider using
+     * read() or write() instead.
      */
-    std::shared_ptr<T> unprotected() const { return p; }
+    T* raw() const { return p.get (); }
 
     /**
      * @brief details provides unprotected access to the instance of

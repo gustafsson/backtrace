@@ -275,7 +275,7 @@ void shared_state_test::
     mya->const_method ();    // <- write lock
 
     // Can get unprotected access without locks
-    mya.unprotected ()->method (1);
+    mya.raw ()->method (1);
 
     // Can not get write access to a const pointer.
     // consta.write (); // error
@@ -473,9 +473,9 @@ void shared_state_test::
 
     // It should keep the lock for the duration of a statement
     shared_state<base> b(new derivative);
-    b.traits ()->b = b.unprotected ().get ();
+    b.traits ()->b = b.raw ();
     dynamic_cast<derivative*>(b.write ().get ())->method ();
-    EXCEPTION_ASSERT_EQUALS(b.unprotected ()->step, 3);
+    EXCEPTION_ASSERT_EQUALS(b.raw ()->step, 3);
 
     condition_variable_any cond;
     future<void> f = async(launch::async, [&](){
