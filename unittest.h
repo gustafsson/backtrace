@@ -6,7 +6,7 @@ namespace BacktraceTest {
 class UnitTest
 {
 public:
-    static int test();
+    static int test(bool rethrow_exceptions=true);
 };
 
 } // namespace BacktraceTest

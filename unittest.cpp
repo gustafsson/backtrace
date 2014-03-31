@@ -28,7 +28,7 @@ string lastname;
     } while(false)
 
 int UnitTest::
-        test()
+        test(bool rethrow_exceptions)
 {
     try {
         Timer(); // Init performance counting
@@ -44,6 +44,9 @@ int UnitTest::
         RUNTEST(locking_barrier);
 
     } catch (const exception& x) {
+        if (rethrow_exceptions)
+            throw;
+
         fprintf(stderr, "%s",
                 str(boost::format("%s\n"
                                   "%s\n"
@@ -51,6 +54,9 @@ int UnitTest::
                     % vartype(x) % boost::diagnostic_information(x) % lastname ).c_str());
         return 1;
     } catch (...) {
+        if (rethrow_exceptions)
+            throw;
+
         fprintf(stderr, "%s",
                 str(boost::format("Not an std::exception\n"
                                   "%s\n"

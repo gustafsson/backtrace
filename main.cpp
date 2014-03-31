@@ -11,5 +11,5 @@ int main(int argc, char** argv)
 
     PrettifySegfault::setup ();
 
-    return BacktraceTest::UnitTest::test();
+    return BacktraceTest::UnitTest::test(false);
 }
