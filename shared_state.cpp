@@ -7,9 +7,7 @@
 #include "exceptionassert.h"
 #include "expectexception.h"
 #include "trace_perf.h"
-#include "backtrace.h"
-#include "tasktimer.h"
-#include "barrier.h"
+#include "shared_state_traits_backtrace.h"
 
 #include <thread>
 #include <future>
@@ -137,36 +135,6 @@ public:
 template<>
 struct shared_state_traits<with_timeout_0>: shared_state_traits_default {
     double timeout() { return 0; }
-};
-
-
-class with_timeout_2_with_boost_exception {};
-
-
-template<class T>
-class lock_failed_boost
-        : public shared_state<T>::lock_failed
-        , public virtual boost::exception
-{};
-
-
-template<>
-struct shared_state_traits<with_timeout_2_with_boost_exception>: shared_state_traits_default {
-    double timeout() { return 0.002; }
-
-    template<class T>
-    void timeout_failed () {
-        /*
-        When a timeout occurs on a lock, this makes an attempt to detect
-        deadlocks. The thread with the timeout is blocked long enough (same
-        timeout as in the failed lock attempt) for any other thread that is
-        deadlocking with this thread to also fail its lock attempt.
-        */
-        this_thread::sleep_for (chrono::duration<double>{timeout()});
-
-        BOOST_THROW_EXCEPTION(lock_failed_boost<T>()
-                              << Backtrace::make ());
-    }
 };
 
 
@@ -583,39 +551,6 @@ void WriteWhileReadingThread::
 #endif
     }
 
-#ifndef SHARED_STATE_NO_TIMEOUT
-    // It should be extensible enough to let clients efficiently add features like
-    //  - backtraces on failed locks
-    {
-        typedef shared_state<with_timeout_2_with_boost_exception> ptr;
-        ptr a{new with_timeout_2_with_boost_exception};
-        ptr b{new with_timeout_2_with_boost_exception};
-
-        spinning_barrier barrier(2);
-
-        std::function<void(ptr,ptr)> m = [&barrier](ptr p1, ptr p2) {
-            try {
-                auto w1 = p1.write ();
-                barrier.wait ();
-                auto w2 = p2.write ();
-
-                // never reached
-                EXCEPTION_ASSERT(false);
-            } catch (lock_failed& x) {
-                // cheeck that a backtrace was embedded into the lock_failed exception
-                const Backtrace* backtrace = boost::get_error_info<Backtrace::info>(x);
-                EXCEPTION_ASSERT(backtrace);
-            }
-        };
-
-        // Lock a and b in opposite order in f1 and f2
-        future<void> f1 = async(launch::async, [&](){ m (b, a); });
-        future<void> f2 = async(launch::async, [&](){ m (a, b); });
-
-        f1.get ();
-        f2.get ();
-    }
-#endif
 
     // It should be extensible enough to let clients efficiently add features like
     //  - run-time warnings on locks that are kept long enough to make it likely

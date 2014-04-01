@@ -9,6 +9,7 @@
 #include "verifyexecutiontime.h"
 #include "demangle.h"
 #include "barrier.h"
+#include "shared_state_traits_backtrace.h"
 
 #include <stdio.h>
 #include <exception>
@@ -42,6 +43,7 @@ int UnitTest::
         RUNTEST(VerifyExecutionTime);
         RUNTEST(spinning_barrier);
         RUNTEST(locking_barrier);
+        RUNTEST(shared_state_traits_backtrace);
 
     } catch (const exception& x) {
         if (rethrow_exceptions)

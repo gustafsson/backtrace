@@ -85,24 +85,14 @@ To keep the lock over multiple method calls, do:
 .read() and .write() are implicitly called by the -> operator on shared_state and create thread-safe critical sections. For shared read-only access when using .read() and for mutually exclusive read-and-write access using .write(). They both throw exceptions on lock timeout, embed a backtrace in an exception object like this:
 
 ````cpp
-template<class T>
-class lock_failed_boost
-  : public shared_state<T>::lock_failed
-  , public virtual boost::exception
-{};
+#include "shared_state_traits_backtrace.h"
 
-
-template<>
-struct shared_state_traits<MyType>
-    : shared_state_traits_default
-{
-  template<class T>
-  void timeout_failed () {
-    this_thread::sleep_for (chrono::duration<double>{timeout()});
-
-    BOOST_THROW_EXCEPTION(lock_failed_boost<T>{} << Backtrace::make ());
-  }
+class MyType {
+public:
+    typedef shared_state_traits_backtrace shared_state_traits;
+    ...
 };
+
 
 ... {
   shared_state<MyType> a(new MyType);
@@ -117,7 +107,7 @@ struct shared_state_traits<MyType>
 ... }
 ````
 
-See shared\_state.pdf or shared\_state.h for details.
+See shared\_state.pdf and shared\_state.h for details.
 
 #### ExceptionAssert example ####
 _The ExceptionAssert class should store details about an assertion that failed._
