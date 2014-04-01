@@ -270,8 +270,7 @@ public:
             std::shared_ptr<details> datap = data.lock ();
             std::shared_ptr<T> pp = p.lock ();
 
-            // Either one could be kept separately from
-            // shared_state::unprotected() or shared_state::traits().
+            // shared_state::traits() could result in a separate copy.
             // Need both to reconstruct shared_state.
             if (pp && datap)
                 return shared_state(pp, datap);
@@ -317,8 +316,13 @@ public:
             unlock ();
         }
 
+#ifdef _DEBUG
+        const T* operator-> () const { assert(t); return t; }
+        const T& operator* () const { assert(t); return *t; }
+#else
         const T* operator-> () const { return t; }
         const T& operator* () const { return *t; }
+#endif
         const T* get () const { return t; }
         explicit operator bool() const { return (bool)t; }
 
@@ -429,8 +433,13 @@ public:
             unlock ();
         }
 
+#ifdef _DEBUG
+        T* operator-> () const { assert(t); return t; }
+        T& operator* () const { assert(t); return *t; }
+#else
         T* operator-> () const { return t; }
         T& operator* () const { return *t; }
+#endif
         T* get () const { return t; }
         explicit operator bool() const { return (bool)t; }
 
