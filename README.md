@@ -42,7 +42,7 @@ Somewhere else
 ````
 
 #### shared_state example ####
-_The shared\_state<T> class is a smart pointer that should guarantee thread-safe access to objects of type T._
+_The shared\_state<T> class is a smart pointer that guarantees thread-safe access to objects of type T._
 
 Make an instance of an object thread-safe by storing it in a shared\_state smart pointer.
 
@@ -54,7 +54,7 @@ Make an instance of an object thread-safe by storing it in a shared\_state smart
     ac->bar ();
 ````
 
-The call to foo will have mutually exclusive write access and the call to bar will be shared read-only const access. Given
+The call to foo() will have mutually exclusive write access and the call to bar() will have shared read-only const access. Given
 
 ````cpp
     class MyType {
