@@ -42,7 +42,7 @@ Somewhere else
 ````
 
 #### shared_state example ####
-_The shared\_state<T> class is a smart pointer that guarantees thread-safe access to objects of type T._
+_The shared\_state\<T\> class is a smart pointer that guarantees thread-safe access to objects of type T._
 
 Make an instance of an object thread-safe by storing it in a shared\_state smart pointer.
 
