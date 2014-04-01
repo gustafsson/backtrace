@@ -493,6 +493,16 @@ void shared_state_test::
         mya.write ()->method (3);
         cond.notify_one ();
     }
+
+    auto rlock = mya.read ();
+    auto rlock2 = std::move(rlock); // Move lock
+    rlock2.swap (rlock); // Swap lock
+    rlock.unlock ();
+
+    auto wlock = mya.write ();
+    auto wlock2 = std::move(wlock); // Move lock
+    wlock2.swap (wlock); // Swap lock
+    wlock.unlock ();
 }
 
 

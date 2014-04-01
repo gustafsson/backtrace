@@ -29,16 +29,16 @@ to_string( expected_exception_type const & x )
     } catch (const X&) { \
         thrown = true;   \
     } catch (const std::exception&) { \
-        BOOST_THROW_EXCEPTION(unexpected_exception()  \
-            << unexpected_exception_info(boost::current_exception ()) \
+        BOOST_THROW_EXCEPTION(unexpected_exception {}\
+            << unexpected_exception_info {boost::current_exception ()} \
             << Backtrace::make () \
-            << expected_exception_type(&typeid(X))); \
+            << expected_exception_type {&typeid(X)}); \
     }                    \
                          \
     if (!thrown)         \
-        BOOST_THROW_EXCEPTION(expected_exception() \
+        BOOST_THROW_EXCEPTION(expected_exception {} \
             << Backtrace::make () \
-            << expected_exception_type(&typeid(X))); \
+            << expected_exception_type {&typeid(X)}); \
 } while(false);
 
 

@@ -47,21 +47,25 @@ int UnitTest::
         if (rethrow_exceptions)
             throw;
 
+        fflush(stdout);
         fprintf(stderr, "%s",
                 str(boost::format("%s\n"
                                   "%s\n"
                                   " FAILED in %s::test()\n\n")
                     % vartype(x) % boost::diagnostic_information(x) % lastname ).c_str());
+        fflush(stderr);
         return 1;
     } catch (...) {
         if (rethrow_exceptions)
             throw;
 
+        fflush(stdout);
         fprintf(stderr, "%s",
                 str(boost::format("Not an std::exception\n"
                                   "%s\n"
                                   " FAILED in %s::test()\n\n")
                     % boost::current_exception_diagnostic_information () % lastname ).c_str());
+        fflush(stderr);
         return 1;
     }
 

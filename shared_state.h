@@ -149,7 +149,7 @@ struct shared_state_traits_default {
      */
     template<class C>
     void timeout_failed () {
-        throw typename shared_state<C>::lock_failed{};
+        throw typename shared_state<C>::lock_failed {};
     }
 
     /**
@@ -301,14 +301,12 @@ public:
      */
     class read_ptr {
     public:
-        read_ptr() {}
+        read_ptr() : l(0), t(0) {}
 
         read_ptr(read_ptr&& b)
-            :   l (b.l),
-                t (b.t)
+            :   read_ptr()
         {
-            p.swap (b.p);
-            d.swap (b.d);
+            swap(b);
         }
 
         read_ptr(const read_ptr&) = delete;
@@ -330,16 +328,16 @@ public:
 
             // try_lock_shared_for and lock_shared are unnecessarily complex if
             // the lock is available right away
-            if (l.try_lock_shared ())
+            if (l->try_lock_shared ())
             {
                 // Got lock
             }
             else if (timeout < 0)
             {
-                l.lock_shared ();
+                l->lock_shared ();
                 // Got lock
             }
-            else if (l.try_lock_shared_for (shared_state_chrono::duration<double>{timeout}))
+            else if (l->try_lock_shared_for (shared_state_chrono::duration<double>{timeout}))
             {
                 // Got lock
             }
@@ -360,16 +358,23 @@ public:
             if (t)
             {
                 t = 0;
-                l.unlock_shared ();
+                l->unlock_shared ();
                 d->was_unlocked();
             }
+        }
+
+        void swap(read_ptr& b) {
+            std::swap(l, b.l);
+            std::swap(p, b.p);
+            std::swap(d, b.d);
+            std::swap(t, b.t);
         }
 
     private:
         friend class shared_state;
 
         explicit read_ptr (const shared_state& vp)
-            :   l (vp.readWriteLock()),
+            :   l (&vp.d->lock),
                 p (vp.p),
                 d (vp.d),
                 t (0)
@@ -378,12 +383,12 @@ public:
         }
 
         read_ptr (const shared_state& vp, bool)
-            :   l (vp.readWriteLock()),
+            :   l (&vp.d->lock),
                 p (vp.p),
                 d (vp.d),
                 t (0)
         {
-            if (!l.try_lock_shared ())
+            if (!l->try_lock_shared ())
                 p.reset ();
             else {
                 t = p.get ();
@@ -391,7 +396,7 @@ public:
             }
         }
 
-        typename details::shared_state_mutex& l;
+        typename details::shared_state_mutex* l;
         // p is 'const element_type', compared to shared_state::p which is just 'T'.
         std::shared_ptr<const element_type> p;
         std::shared_ptr<details> d;
@@ -409,14 +414,12 @@ public:
      */
     class write_ptr {
     public:
-        write_ptr() {}
+        write_ptr() : l(0), t(0) {}
 
         write_ptr(write_ptr&& b)
-            :   l (b.l),
-                t (b.t)
+            :   write_ptr()
         {
-            p.swap (b.p);
-            d.swap (b.d);
+            swap(b);
         }
 
         write_ptr(const write_ptr&) = delete;
@@ -435,14 +438,14 @@ public:
         void lock() {
             double timeout = d->timeout();
 
-            if (l.try_lock())
+            if (l->try_lock())
             {
             }
             else if (timeout < 0)
             {
-                l.lock ();
+                l->lock ();
             }
-            else if (l.try_lock_for (shared_state_chrono::duration<double>{timeout}))
+            else if (l->try_lock_for (shared_state_chrono::duration<double>{timeout}))
             {
             }
             else
@@ -460,9 +463,16 @@ public:
             if (t)
             {
                 t = 0;
-                l.unlock ();
+                l->unlock ();
                 d->was_unlocked();
             }
+        }
+
+        void swap(write_ptr& b) {
+            std::swap(l, b.l);
+            std::swap(p, b.p);
+            std::swap(d, b.d);
+            std::swap(t, b.t);
         }
 
     private:
@@ -470,7 +480,7 @@ public:
 
         template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
         explicit write_ptr (const shared_state& vp)
-            :   l (vp.readWriteLock()),
+            :   l (&vp.d->lock),
                 p (vp.p),
                 d (vp.d),
                 t (0)
@@ -480,12 +490,12 @@ public:
 
         template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
         write_ptr (const shared_state& vp, bool)
-            :   l (vp.readWriteLock()),
+            :   l (&vp.d->lock),
                 p (vp.p),
                 d (vp.d),
                 t (0)
         {
-            if (!l.try_lock ())
+            if (!l->try_lock ())
                 p.reset ();
             else {
                 t = p.get ();
@@ -493,7 +503,7 @@ public:
             }
         }
 
-        typename details::shared_state_mutex& l;
+        typename details::shared_state_mutex* l;
         std::shared_ptr<T> p;
         std::shared_ptr<details> d;
         T* t;
