@@ -59,6 +59,7 @@ OBJECTS       = \
 		unittest.o \
 		verifyexecutiontime.o \
 		shared_state.o \
+		shared_state_traits_backtrace.o \
 
 all: $(TARGET)
 

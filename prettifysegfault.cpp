@@ -47,10 +47,13 @@ void seghandle(int sig, __siginfo*, void* unused)
   last_caught_signal = sig;
 
   fflush(stdout);
+  flush(std::cout);
+  flush(std::cerr);
   if (enable_signal_print)
     fprintf(stderr, "\nError: signal %s(%d) %s\n", SignalName::name (sig), sig, SignalName::desc (sig));
   fflush(stderr);
 
+  // http://feepingcreature.github.io/handling.html
   ucontext_t* uc = (ucontext_t*) unused;
   // No. I refuse to use triple-pointers.
   // Just pretend ref a = v; is V* ap = &v;

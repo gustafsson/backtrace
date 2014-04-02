@@ -8,6 +8,7 @@
 #include "expectexception.h"
 #include "trace_perf.h"
 #include "shared_state_traits_backtrace.h"
+#include "barrier.h"
 
 #include <thread>
 #include <future>
@@ -530,9 +531,11 @@ void WriteWhileReadingThread::
 #ifndef SHARED_STATE_NO_TIMEOUT
         // can't lock for read twice if another thread request a write in the middle
         // that write request will fail and then this will succeed
-        future<void> f = async(launch::async, [&b](){
+        spinning_barrier barrier(2);
+        future<void> f = async(launch::async, [&b,&barrier](){
             // Make sure readTwice starts before this function
-            this_thread::sleep_for (chrono::milliseconds{1});
+            barrier.wait ();
+            this_thread::sleep_for (chrono::milliseconds{3});
 
             // Write access should fail as the first thread attempts recursive locks
             // through multiple calls to read ().
@@ -540,6 +543,7 @@ void WriteWhileReadingThread::
         });
 
         {
+            barrier.wait ();
 #ifndef SHARED_STATE_NO_SHARED_MUTEX
             readTwice(b);
 #else
