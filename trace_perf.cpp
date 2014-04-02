@@ -1,5 +1,6 @@
 #include "trace_perf.h"
 #include "detectgdb.h"
+#include "shared_state.h"
 
 #include <vector>
 #include <fstream>
@@ -29,32 +30,53 @@ private:
     };
 
     map<string, vector<Entry>> entries;
+    vector<string> database_paths;
 
-    static void read_database(map<string, double>& db, string filename);
-    static vector<string> get_database_names(string sourcefilename);
-    static void load_db(map<string, map<string, double>>& dbs, string sourcefilename);
-    static void compare_to_db(map<string, double> &db, const vector<Entry>& entries, string sourcefilename);
-    static void dump_entries(const vector<Entry>& entries, string sourcefilaname);
+    vector<string> get_database_names(string sourcefilename);
+    void load_db(map<string, map<string, double>>& dbs, string sourcefilename);
+    void compare_to_db(map<string, double> &db, const vector<Entry>& entries, string sourcefilename);
 
     void compare_to_db();
     void dump_entries();
 
+    static void read_database(map<string, double>& db, string filename);
+    static void dump_entries(const vector<Entry>& entries, string sourcefilaname);
+
 public:
+    performance_traces();
     ~performance_traces();
 
     void log(string filename, string info, double elapsed) {
+        size_t i = filename.find_last_of ('/');
+        if (string::npos != i)
+            filename = filename.substr (i+1);
+
         entries[filename].push_back(Entry{info, elapsed});
+    }
+
+    void add_path(string path) {
+        database_paths.push_back (path);
     }
 };
 
-static performance_traces traces;
+static shared_state<performance_traces> traces {new performance_traces};
+
+
+performance_traces::
+        performance_traces()
+{
+    add_path ("trace_perf");
+}
 
 
 performance_traces::
         ~performance_traces()
 {
-    compare_to_db();
-    dump_entries();
+    fflush (stdout);
+    fflush (stderr);
+
+    compare_to_db ();
+    dump_entries ();
 }
 
 
@@ -260,10 +282,12 @@ vector<string> performance_traces::
         for (int i=0; i<n; i++)
             db.push_back (hostname + "/" + db[i]);
 
-    for (unsigned i=0; i<db.size (); i++)
-        db[i] = "trace_perf/" + db[i];
+    vector<string> dbfiles;
+    for (unsigned j=0; j<database_paths.size (); j++)
+        for (unsigned i=0; i<db.size (); i++)
+            dbfiles.push_back (database_paths[j] + "/" + db[i]);
 
-    return db;
+    return dbfiles;
 }
 
 
@@ -287,7 +311,7 @@ void trace_perf::
 {
     double d = timer.elapsed ();
     if (!info.empty ())
-        traces.log (filename, info, d);
+        traces->log (filename, info, d);
 }
 
 
@@ -298,4 +322,11 @@ void trace_perf::
 
     this->info = info;
     this->timer.restart ();
+}
+
+
+void trace_perf::
+        add_database_path(const std::string& path)
+{
+    traces->add_path(path);
 }

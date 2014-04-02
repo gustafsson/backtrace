@@ -29,6 +29,7 @@ public:
     void reset();
     void reset(const std::string& info);
 
+    static void add_database_path(const std::string& path);
 private:
     Timer timer;
     std::string info;
