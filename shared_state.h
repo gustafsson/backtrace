@@ -192,12 +192,14 @@ struct shared_state_traits_helper {
 
 template<typename T>
 struct shared_state_details: public shared_state_traits_helper<T>::type {
-    shared_state_details() {}
+    shared_state_details(T*p) : p(p) {}
     shared_state_details(shared_state_details const&) = delete;
     shared_state_details& operator=(shared_state_details const&) = delete;
-
+    ~shared_state_details() { delete p; }
     typedef typename shared_state_traits_helper<T>::type::shared_state_mutex shared_state_mutex;
     mutable shared_state_mutex lock;
+
+    T* const p;
 };
 
 
@@ -228,59 +230,32 @@ public:
 
     template<class Y,
              class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
-    explicit shared_state ( Y* p, std::shared_ptr<details> dp )
-    {
-        reset(p, dp);
-    }
-
-    template<class Y,
-             class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
     shared_state(const shared_state<Y>& a)
-        :
-            p( a.p ),
-            d( a.d )
     {
+        d = a.d;
     }
 
     void reset() {
-        p.reset ();
         d.reset ();
     }
 
     template<class Y,
              class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
     void reset( Y* yp ) {
-        p.reset (yp);
-        d.reset (new details);
-    }
-
-    template<class Y,
-             class = typename std::enable_if <std::is_convertible<Y*, element_type*>::value>::type>
-    void reset( Y* yp, std::shared_ptr<details> dp) {
-        p.reset (yp);
-        d.swap (dp);
+        d.reset (new details(yp));
     }
 
     class weak_ptr {
     public:
         weak_ptr() {}
-        weak_ptr(const shared_state& t) : data(t.d), p(t.p) {}
+        weak_ptr(const shared_state& t) : d(t.d) {}
 
         shared_state lock() const {
-            std::shared_ptr<details> datap = data.lock ();
-            std::shared_ptr<T> pp = p.lock ();
-
-            // shared_state::traits() could result in a separate copy.
-            // Need both to reconstruct shared_state.
-            if (pp && datap)
-                return shared_state(pp, datap);
-
-            return shared_state{std::shared_ptr<T>(), std::shared_ptr<details>()};
+            return shared_state{d.lock ()};
         }
 
     private:
-        std::weak_ptr<details> data;
-        std::weak_ptr<T> p;
+        std::weak_ptr<details> d;
     };
 
     /**
@@ -300,7 +275,7 @@ public:
      */
     class read_ptr {
     public:
-        read_ptr() : l(0), t(0) {}
+        read_ptr() : l(0), p(0) {}
 
         read_ptr(read_ptr&& b)
             :   read_ptr()
@@ -317,14 +292,14 @@ public:
         }
 
 #ifdef _DEBUG
-        const T* operator-> () const { assert(t); return t; }
-        const T& operator* () const { assert(t); return *t; }
+        const T* operator-> () const { assert(p); return p; }
+        const T& operator* () const { assert(p); return *p; }
 #else
-        const T* operator-> () const { return t; }
-        const T& operator* () const { return *t; }
+        const T* operator-> () const { return p; }
+        const T& operator* () const { return *p; }
 #endif
-        const T* get () const { return t; }
-        explicit operator bool() const { return (bool)t; }
+        const T* get () const { return p; }
+        explicit operator bool() const { return (bool)p; }
 
         void lock() {
             // l is not locked, but timeout is required to be reentrant
@@ -350,18 +325,18 @@ public:
                 d->template timeout_failed<T> ();
                 // timeout_failed is expected to throw. But if it doesn't,
                 // make this behave as a null pointer
-                p.reset ();
+                p = 0;
                 return; // don't call was_locked
             }
 
-            t = p.get ();
+            p = d->p;
             d->was_locked();
         }
 
         void unlock() {
-            if (t)
+            if (p)
             {
-                t = 0;
+                p = 0;
                 l->unlock_shared ();
                 d->was_unlocked();
             }
@@ -369,9 +344,8 @@ public:
 
         void swap(read_ptr& b) {
             std::swap(l, b.l);
-            std::swap(p, b.p);
             std::swap(d, b.d);
-            std::swap(t, b.t);
+            std::swap(p, b.p);
         }
 
     private:
@@ -379,32 +353,28 @@ public:
 
         explicit read_ptr (const shared_state& vp)
             :   l (&vp.d->lock),
-                p (vp.p),
                 d (vp.d),
-                t (0)
+                p (0)
         {
             lock ();
         }
 
         read_ptr (const shared_state& vp, bool)
             :   l (&vp.d->lock),
-                p (vp.p),
                 d (vp.d),
-                t (0)
+                p (0)
         {
             if (!l->try_lock_shared ())
-                p.reset ();
+                p = 0;
             else {
-                t = p.get ();
+                p = d->p;
                 d->was_locked();
             }
         }
 
         typename details::shared_state_mutex* l;
-        // p is 'const element_type', compared to shared_state::p which is just 'T'.
-        std::shared_ptr<const element_type> p;
         std::shared_ptr<details> d;
-        const element_type* t;
+        const element_type* p;
     };
 
 
@@ -418,7 +388,7 @@ public:
      */
     class write_ptr {
     public:
-        write_ptr() : l(0), t(0) {}
+        write_ptr() : l(0), p(0) {}
 
         write_ptr(write_ptr&& b)
             :   write_ptr()
@@ -434,14 +404,14 @@ public:
         }
 
 #ifdef _DEBUG
-        T* operator-> () const { assert(t); return t; }
-        T& operator* () const { assert(t); return *t; }
+        T* operator-> () const { assert(p); return p; }
+        T& operator* () const { assert(p); return *p; }
 #else
-        T* operator-> () const { return t; }
-        T& operator* () const { return *t; }
+        T* operator-> () const { return p; }
+        T& operator* () const { return *p; }
 #endif
-        T* get () const { return t; }
-        explicit operator bool() const { return (bool)t; }
+        T* get () const { return p; }
+        explicit operator bool() const { return (bool)p; }
 
         // See read_ptr::lock
         void lock() {
@@ -460,18 +430,18 @@ public:
             else
             {
                 d->template timeout_failed<T> ();
-                p.reset ();
+                p = 0;
                 return;
             }
 
-            t = p.get ();
+            p = d->p;
             d->was_locked();
         }
 
         void unlock() {
-            if (t)
+            if (p)
             {
-                t = 0;
+                p = 0;
                 l->unlock ();
                 d->was_unlocked();
             }
@@ -479,9 +449,8 @@ public:
 
         void swap(write_ptr& b) {
             std::swap(l, b.l);
-            std::swap(p, b.p);
             std::swap(d, b.d);
-            std::swap(t, b.t);
+            std::swap(p, b.p);
         }
 
     private:
@@ -490,9 +459,8 @@ public:
         template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
         explicit write_ptr (const shared_state& vp)
             :   l (&vp.d->lock),
-                p (vp.p),
                 d (vp.d),
-                t (0)
+                p (0)
         {
             lock ();
         }
@@ -500,22 +468,20 @@ public:
         template<class = typename disable_if <std::is_convertible<const T*, T*>::value>::type>
         write_ptr (const shared_state& vp, bool)
             :   l (&vp.d->lock),
-                p (vp.p),
                 d (vp.d),
-                t (0)
+                p (0)
         {
             if (!l->try_lock ())
-                p.reset ();
+                p = 0;
             else {
-                t = p.get ();
+                p = d->p;
                 d->was_locked();
             }
         }
 
         typename details::shared_state_mutex* l;
-        std::shared_ptr<T> p;
         std::shared_ptr<details> d;
-        T* t;
+        T* p;
     };
 
 
@@ -554,18 +520,20 @@ public:
      * responsible for using other synchornization mechanisms, consider using
      * read() or write() instead.
      */
-    T* raw() const { return p.get (); }
+    T* raw() const { return d ? d->p : nullptr; }
 
     /**
-     * @brief details provides unprotected access to the instance of
+     * @brief traits provides unprotected access to the instance of
      * shared_state_traits used for this type.
+     * The shared_state is not released as long as the shared_ptr return from
+     * traits is alive.
      */
     std::shared_ptr<typename shared_state_traits_helper<T>::type> traits() const { return d; }
 
-    explicit operator bool() const { return p.get (); }
-    bool operator== (const shared_state& b) const { return p.get () == b.p.get (); }
+    explicit operator bool() const { return (bool)d; }
+    bool operator== (const shared_state& b) const { return d == b.d; }
     bool operator!= (const shared_state& b) const { return !(*this == b); }
-    bool operator < (const shared_state& b) const { return this->p < b.p; }
+    bool operator < (const shared_state& b) const { return this->d < b.d; }
 
 #ifndef SHARED_STATE_DISABLE_IMPLICIT_LOCK
     static write_ptr lock_type_test(element_type*);
@@ -576,15 +544,14 @@ public:
     lock_type get () const { return lock_type(*this); }
 #endif
 
-    bool unique() const { return p.unique (); }
+    bool unique() const { return d.unique (); }
 
 private:
     template<typename Y>
     friend class shared_state;
 
-    shared_state ( std::shared_ptr<T> p, std::shared_ptr<details> d ) : p(p), d(d) {}
+    shared_state ( std::shared_ptr<details> d ) : d(d) {}
 
-    std::shared_ptr<T> p;
     std::shared_ptr<details> d;
 };
 
