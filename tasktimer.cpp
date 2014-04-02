@@ -28,12 +28,36 @@
 using namespace boost;
 using namespace std;
 
-typedef unique_lock<recursive_mutex> TaskTimerLock;
-
-
 bool DISABLE_TASKTIMER = false;
 const int thread_column_width = 4;
-recursive_mutex staticLock;
+
+class is_alive_t {
+public:
+    is_alive_t() : is_alive(true) {}
+    ~is_alive_t() { is_alive = false; }
+    operator bool() { return is_alive; }
+private:
+    bool is_alive;
+} is_alive;
+
+class staticLock_t {
+public:
+    void lock() {
+        if (is_alive)
+            lock_.lock();
+    }
+
+    void unlock() throw() {
+        if (is_alive)
+            lock_.unlock ();
+    }
+
+private:
+    recursive_mutex lock_;
+} staticLock;
+
+typedef unique_lock<staticLock_t> TaskTimerLock;
+
 
 struct ThreadInfo {
     const int threadNumber;
@@ -45,7 +69,7 @@ struct ThreadInfo {
     {
         memset(counter, 0, sizeof(counter));
     }
-};
+} single;
 
 bool writeNextOnNewRow[3] = {false, false, false};
 TaskTimer* lastTimer[3] = {0,0,0};
@@ -59,6 +83,9 @@ ostream* logLevelStream[] = {
 map<thread::id,ThreadInfo> thread_info_map;
 
 static ThreadInfo& T() {
+    if (!is_alive)
+        return single;
+
     // Assume lock is acquired.
     thread::id threadid = this_thread::get_id ();
 
@@ -137,7 +164,7 @@ void TaskTimer::init(LogLevel logLevel, const char* task, va_list args) {
         upperLevel = new TaskTimer( 0, logLevel, task, args );
     }
 
-    ++T().counter[this->logLevel];
+    T().counter[this->logLevel]++;
 
     printIndentation();
     vector<string> strs;
@@ -203,7 +230,7 @@ void TaskTimer::suppressTiming() {
 
 bool TaskTimer::printIndentation() {
     TaskTimerLock scope(staticLock);
-    ThreadInfo& t = T();
+    const ThreadInfo& t = T();
     TaskTimer* ltll = lastTimer[logLevel];
 
     if (ltll == this) {
@@ -276,9 +303,9 @@ void TaskTimer::partlyDone() {
         return;
 
     TaskTimerLock scope(staticLock);
-    ThreadInfo& t = T();
 
-    ++t.counter[logLevel];
+    ThreadInfo& t = T();
+    t.counter[this->logLevel]++;
     writeNextOnNewRow[logLevel] = false;
 
     bool didprint = printIndentation();
@@ -287,7 +314,7 @@ void TaskTimer::partlyDone() {
         logprint("> ");
     }
 
-    --t.counter[logLevel];
+    t.counter[this->logLevel]--;
 
     do {
         numPartlyDone++;
