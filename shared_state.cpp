@@ -110,15 +110,7 @@ struct C {
 
 struct C2: C {
     struct shared_state_traits: shared_state_traits_default {
-        class shared_state_mutex: public std::mutex {
-        public:
-            void lock_shared() { lock(); }
-            bool try_lock_shared() { return try_lock(); }
-            void unlock_shared() { unlock(); }
-
-            bool try_lock_for(...) { lock(); return true; }
-            bool try_lock_shared_for(...) { lock_shared(); return true; }
-        };
+        typedef shared_state_mutex_notimeout_noshared shared_state_mutex;
 
         double timeout() { return -1; }
     };

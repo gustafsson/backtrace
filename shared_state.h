@@ -116,15 +116,7 @@
 template<class T>
 class shared_state;
 
-
-#if defined(SHARED_STATE_NO_TIMEOUT) || defined(SHARED_STATE_NO_SHARED_MUTEX) || defined(SHARED_STATE_BOOST_MUTEX)
-    #include "shared_state_mutex.h"
-#else
-    #include "shared_timed_mutex_polyfill.h" // Only requires C++11, until std::shared_timed_mutex is available in C++14.
-    namespace shared_state_chrono = std::chrono;
-    typedef std_polyfill::shared_timed_mutex shared_state_mutex;
-#endif
-
+#include "shared_state_mutex.h"
 
 class lock_failed: public virtual std::exception {};
 
