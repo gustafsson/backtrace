@@ -45,6 +45,23 @@ int UnitTest::
         RUNTEST(locking_barrier);
         RUNTEST(shared_state_traits_backtrace);
 
+    } catch (const ExceptionAssert& x) {
+        if (rethrow_exceptions)
+            throw;
+
+        char const * const * f = boost::get_error_info<boost::throw_file>(x);
+        int const * l = boost::get_error_info<boost::throw_line>(x);
+        char const * const * c = boost::get_error_info<ExceptionAssert::ExceptionAssert_condition>(x);
+        std::string const * m = boost::get_error_info<ExceptionAssert::ExceptionAssert_message>(x);
+
+        fflush(stdout);
+        fprintf(stderr, "%s",
+                str(boost::format("%s:%d: %s. %s\n"
+                                  "%s\n"
+                                  " FAILED in %s::test()\n\n")
+                    % (f?*f:0) % (l?*l:-1) % (c?*c:0) % (m?*m:0) % boost::diagnostic_information(x) % lastname ).c_str());
+        fflush(stderr);
+        return 1;
     } catch (const exception& x) {
         if (rethrow_exceptions)
             throw;
