@@ -2,20 +2,16 @@
  * Include: shared_state.h, shared_state_mutex.h, shared_timed_mutex_polyfill.h
  * Library: C++11 only
  *
- * The shared_state class is a smart pointer that should guarantee thread-safe
- * access to objects, with
+ * The shared_state class is a smart pointer that guarantees thread-safe access
+ * to shared states in a multithreaded environment, with
  *
- *  - compile-time errors on missing locks,
- *  - run-time exceptions on lock timeout, from all racing threads
- *    participating in a deadlock.
+ *   - compile-time errors on write attempts from shared read-only locks and,
+ *   - run-time exceptions on lock timeouts
  *
+ * shared_state can be extended with type traits to get, for instance,
  *
- * It should be extensible enough to let clients add features without modifying
- * the source, like
- *
- *  - backtraces on failed locks,
- *  - run-time warnings on locks that are kept long enough to make it likely
- *    that other simultaneous lock attempts will fail.
+ *   - backtraces on deadlocks from all participating threads,
+ *   - warnings on locks that are held too long.
  *
  *
  * In a nutshell
@@ -188,6 +184,7 @@ struct shared_state_details: public shared_state_traits_helper<T>::type {
     shared_state_details(shared_state_details const&) = delete;
     shared_state_details& operator=(shared_state_details const&) = delete;
     ~shared_state_details() { delete p; }
+
     typedef typename shared_state_traits_helper<T>::type::shared_state_mutex shared_state_mutex;
     mutable shared_state_mutex lock;
 
@@ -546,6 +543,21 @@ private:
 
     std::shared_ptr<details> d;
 };
+
+
+template<class T>
+inline void swap(typename shared_state<T>::read_ptr& a, typename shared_state<T>::read_ptr& b)
+{
+    a.swap(b);
+}
+
+
+template<class T>
+inline void swap(typename shared_state<T>::write_ptr& a, typename shared_state<T>::write_ptr& b)
+{
+    a.swap(b);
+}
+
 
 class shared_state_test {
 public:

@@ -83,14 +83,14 @@ public:
     do { \
         const auto& _x = (a); \
         const auto& _y = (b); \
-        EXCEPTION_ASSERTX( _x == _y, boost::format("Equals failed. Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
+        EXCEPTION_ASSERTX( _x == _y, boost::format("Equals failed: Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
     } while(false)
 
 #define EXCEPTION_ASSERT_NOTEQUALS( a, b ) \
     do { \
         const auto& _x = (a); \
         const auto& _y = (b); \
-        EXCEPTION_ASSERTX( _x != _y, boost::format("Not equals failed. Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
+        EXCEPTION_ASSERTX( _x != _y, boost::format("Not equals failed: Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
     } while(false)
 
 #define EXCEPTION_ASSERT_FUZZYEQUALS( a, b, d ) \
@@ -98,21 +98,21 @@ public:
         const auto& _x = (a); \
         const auto& _y = (b); \
         const auto& _z = (d); \
-        EXCEPTION_ASSERTX( (_x > _y ? _x - _y <= _z : _y - _x <= _z), boost::format("Fuzzy equals failed. Got '%1%' = %3%, and '%2%' = %4%, with diff = %6%, tolerance = %5%") % #a % #b % _x % _y % _z % (_x > _y ? _x - _y : _y - _x)); \
+        EXCEPTION_ASSERTX( (_x > _y ? _x - _y <= _z : _y - _x <= _z), boost::format("Fuzzy equals failed: Got '%1%' = %3%, and '%2%' = %4%, with diff = %6%, tolerance = %5%") % #a % #b % _x % _y % _z % (_x > _y ? _x - _y : _y - _x)); \
     } while(false)
 
 #define EXCEPTION_ASSERT_LESS( a, b ) \
     do { \
         const auto& _x = (a); \
         const auto& _y = (b); \
-        EXCEPTION_ASSERTX( _x < _y, boost::format("Less failed. Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
+        EXCEPTION_ASSERTX( _x < _y, boost::format("Less failed: Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
     } while(false)
 
 #define EXCEPTION_ASSERT_LESS_OR_EQUAL( a, b ) \
     do { \
         const auto& _x = (a); \
         const auto& _y = (b); \
-        EXCEPTION_ASSERTX( _x <= _y, boost::format("Less or equal failed. Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
+        EXCEPTION_ASSERTX( _x <= _y, boost::format("Less or equal failed: Got '%1%' = %3%, and '%2%' = %4%") % #a % #b % _x % _y); \
     } while(false)
 
 #ifdef _DEBUG

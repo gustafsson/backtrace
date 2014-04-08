@@ -1,6 +1,9 @@
 /**
   This file only contains unit tests for shared_state.
   This file is not required for using shared_state.
+
+  The tests are written so that they can be read as examples.
+  Scroll down to void shared_state_test::test ().
   */
 
 #include "shared_state.h"
@@ -14,50 +17,8 @@
 #include <future>
 #include <condition_variable>
 
-// scroll down to void shared_state_test::test () to see more examples
 
 using namespace std;
-
-class OrderOfOperationsCheck
-{
-public:
-    const OrderOfOperationsCheck& operator= (int a) {
-        a_ = a;
-        return *this;
-    }
-
-private:
-    int a_;
-};
-
-
-class InnerDestructor {
-public:
-    InnerDestructor(bool* inner_destructor):inner_destructor(inner_destructor) {}
-    ~InnerDestructor() { *inner_destructor = true; }
-
-private:
-    bool* inner_destructor;
-};
-
-
-class ThrowInConstructor {
-public:
-    ThrowInConstructor(bool*outer_destructor, bool*inner_destructor)
-        :
-          outer_destructor(outer_destructor),
-          inner(inner_destructor)
-    {
-        throw 1;
-    }
-
-    ~ThrowInConstructor() { *outer_destructor = true; }
-
-private:
-    bool* outer_destructor;
-    InnerDestructor inner;
-};
-
 
 class A
 {
@@ -77,7 +38,6 @@ public:
 private:
 
     int a_;
-    OrderOfOperationsCheck c_;
 };
 
 
@@ -365,20 +325,6 @@ void shared_state_test::
     }
 
 
-    // Verify the behaviour of a practice commonly frowned upon; throwing from constructors.
-    //
-    // It should be fine to throw from the constructor as long as allocated
-    // resources are taken care of as usual in any other scope without the help
-    // of the explicit destructor corresponding to the throwing constructor.
-    {
-        bool outer_destructor = false;
-        bool inner_destructor = false;
-        EXPECT_EXCEPTION(int, ThrowInConstructor d(&outer_destructor, &inner_destructor));
-        EXCEPTION_ASSERT(inner_destructor);
-        EXCEPTION_ASSERT(!outer_destructor);
-    }
-
-
     // shared_state should cause an overhead of less than 0.3 microseconds in a
     // 'release' build.
     {
@@ -471,7 +417,6 @@ A& A::
         operator= (const A& b)
 {
     a_ = b.a_;
-    c_ = b.c_;
     return *this;
 }
 

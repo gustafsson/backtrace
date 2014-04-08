@@ -1,8 +1,8 @@
 Backtraces rationale
 ====================
-_The Backtrace class should store a backtrace of the call stack in 1 ms on windows, os x and linux._
+_The Backtrace class should store a backtrace of the call stack in 1 ms on os x. Windows and linux was supported but are not currently maintained._
 
-To make bugs go squish you want some sort of indication as to where it is. This is a bunch of small classes that makes use of runtime backtraces in C++ to decorate exceptions and segfaults with info about their origin. Each class header comment defines its expected behaviour. 
+To make bugs go squish you want some sort of indication as to where it is. This is a bunch of small classes that makes use of runtime backtraces in C++ to decorate exceptions and segfaults with info about their origin. Each class header comment defines its expected behaviour.
 
 
 #### Backtrace example ####
