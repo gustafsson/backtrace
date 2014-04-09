@@ -168,7 +168,7 @@ template<class C>
 struct shared_state_traits: public shared_state_traits_default {};
 
 template<class T>
-struct shared_state_traits_helper {
+struct shared_state_details_helper {
     template<typename C>
     static typename C::shared_state_traits test(typename C::shared_state_traits*);
 
@@ -179,13 +179,13 @@ struct shared_state_traits_helper {
 };
 
 template<typename T>
-struct shared_state_details: public shared_state_traits_helper<T>::type {
+struct shared_state_details: public shared_state_details_helper<T>::type {
     shared_state_details(T*p) : p(p) {}
     shared_state_details(shared_state_details const&) = delete;
     shared_state_details& operator=(shared_state_details const&) = delete;
     ~shared_state_details() { delete p; }
 
-    typedef typename shared_state_traits_helper<T>::type::shared_state_mutex shared_state_mutex;
+    typedef typename shared_state_details_helper<T>::type::shared_state_mutex shared_state_mutex;
     mutable shared_state_mutex lock;
 
     T* const p;
@@ -517,7 +517,7 @@ public:
      * The shared_state is not released as long as the shared_ptr return from
      * traits is alive.
      */
-    std::shared_ptr<typename shared_state_traits_helper<T>::type> traits() const { return d; }
+    std::shared_ptr<typename shared_state_details_helper<T>::type> traits() const { return d; }
 
     explicit operator bool() const { return (bool)d; }
     bool operator== (const shared_state& b) const { return d == b.d; }
