@@ -1,31 +1,39 @@
 #include "shared_state_traits_backtrace.h"
 #include "barrier.h"
 #include "exceptionassert.h"
+#include "trace_perf.h"
 
 #include <future>
 
 using namespace std;
 
-class with_timeout_2_with_boost_exception {
+namespace shared_state_traits_backtrace_test {
+
+class A {
 public:
     struct shared_state_traits: shared_state_traits_backtrace {
-        double timeout() { return 0.002; }
+        double timeout() override { return 0.002; }
+        double verify_lock_time() override { return lock_time; }
+        double lock_time = 0.001;
     };
 };
 
+} // namespace shared_state_traits_backtrace_test
+
+using namespace shared_state_traits_backtrace_test;
 
 void shared_state_traits_backtrace::
         test()
 {
-    // It should provide backtraces on lock_failed exceptions.
-
 #ifndef SHARED_STATE_NO_TIMEOUT
-    // It should be extensible enough to let clients efficiently add features like
-    //  - backtraces on failed locks
+    // shared_state can be extended with type traits to get, for instance,
+    //  - backtraces on deadlocks from all participating threads,
     {
-        typedef shared_state<with_timeout_2_with_boost_exception> ptr;
-        ptr a{new with_timeout_2_with_boost_exception};
-        ptr b{new with_timeout_2_with_boost_exception};
+        typedef shared_state<A> ptr;
+        ptr a{new A};
+        ptr b{new A};
+        a.traits ()->lock_time = 1;
+        b.traits ()->lock_time = 1;
 
         spinning_barrier barrier(2);
 
@@ -52,4 +60,34 @@ void shared_state_traits_backtrace::
         f2.get ();
     }
 #endif
+
+    // shared_state can be extended with type traits to get, for instance,
+    //  - warnings on locks that are held too long.
+    {
+        shared_state<A> a{new A};
+
+        bool did_report = false;
+
+        a.traits ()->exceeded_lock_time = [&did_report](float){ did_report = true; };
+
+        auto w = a.write ();
+
+        // Wait to make VerifyExecutionTime detect that the lock was kept too long
+        this_thread::sleep_for (chrono::milliseconds{10});
+
+        EXCEPTION_ASSERT(!did_report);
+        w.unlock ();
+        EXCEPTION_ASSERT(did_report);
+
+        {
+            int N = 10000;
+
+            TRACE_PERF("warnings on locks that are held too long should cause a low overhead");
+            for (int i=0; i<N; i++)
+            {
+                a.write ();
+                a.read ();
+            }
+        }
+    }
 }

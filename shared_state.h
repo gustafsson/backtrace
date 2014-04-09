@@ -559,9 +559,8 @@ inline void swap(typename shared_state<T>::write_ptr& a, typename shared_state<T
 }
 
 
-class shared_state_test {
-public:
-    static void test ();
-};
+namespace shared_state_test {
+    void test ();
+}
 
 #endif // SHARED_STATE_H

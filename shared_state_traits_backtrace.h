@@ -1,5 +1,5 @@
-#ifndef SHARED_STATE_BACKTRACE_H
-#define SHARED_STATE_BACKTRACE_H
+#ifndef SHARED_STATE_TRAITS_BACKTRACE_H
+#define SHARED_STATE_TRAITS_BACKTRACE_H
 
 #include "shared_state.h"
 #include "backtrace.h"
@@ -15,8 +15,8 @@ class lock_failed_boost
 
 
 /**
- * @brief The shared_state_traits_backtrace should provide backtraces on
- * lock_failed exceptions.
+ * @brief The shared_state_traits_backtrace struct should provide backtraces on
+ * lock_failed exceptions. It should issue a warning if the lock is kept too long.
  *
  * class MyType {
  * public:
@@ -28,6 +28,7 @@ class lock_failed_boost
  */
 struct shared_state_traits_backtrace: shared_state_traits_default {
     virtual double timeout () { return shared_state_traits_default::timeout (); }
+    virtual double verify_lock_time() { return timeout()/2.0f; }
 
     template<class T>
     void timeout_failed () {
@@ -43,7 +44,24 @@ struct shared_state_traits_backtrace: shared_state_traits_default {
                               << Backtrace::make ());
     }
 
+    void was_locked() {
+        start = std::chrono::high_resolution_clock::now ();
+    }
+
+    void was_unlocked() {
+        std::chrono::duration<double> diff = std::chrono::high_resolution_clock::now () - start;
+        if (diff.count() > verify_lock_time())
+            exceeded_lock_time (diff.count());
+    }
+
+    std::function<void(double)> exceeded_lock_time = [](double T) {
+        std::cout << "Warning: Lock was held for " << T << "seconds. In " << Backtrace::make_string () << std::endl;
+    };
+
     static void test();
+
+private:
+    std::chrono::high_resolution_clock::time_point start;
 };
 
-#endif // SHARED_STATE_BACKTRACE_H
+#endif // SHARED_STATE_TRAITS_BACKTRACE_H

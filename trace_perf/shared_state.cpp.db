@@ -7,9 +7,6 @@ shared_state should cause a low read overhead
 shared_state should cause a low overhead : reference
 0.001
 --- unit 0.1 ms
-shared_state with VerifyExecutionTime should cause a low overhead
-0.02
---- unit 0.1 ms
 shared_state should fail fast with try_read
 0.06
 --- unit 1 ms
