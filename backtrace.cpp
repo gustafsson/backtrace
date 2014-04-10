@@ -292,7 +292,7 @@ string Backtrace::
 std::string Backtrace::
         make_string(int skipframes)
 {
-    return make(skipframes).value ().to_string();
+    return make(skipframes+1).value ().to_string();
 }
 
 

@@ -325,6 +325,11 @@ LONG WINAPI MyUnhandledExceptionFilter(
 }
 #endif // _MSC_VER
 
+void my_terminate() {
+    std::cerr << ("\n\n"
+                  "std::terminate was called with " + Backtrace::make_string ()) << std::endl;
+    std::abort ();
+}
 
 void PrettifySegfault::
         setup ()
@@ -350,6 +355,8 @@ void PrettifySegfault::
 #else
     SetUnhandledExceptionFilter(MyUnhandledExceptionFilter);
 #endif
+
+    std::set_terminate (my_terminate);
 }
 
 
