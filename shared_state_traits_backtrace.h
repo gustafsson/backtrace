@@ -31,7 +31,7 @@ struct shared_state_traits_backtrace: shared_state_traits_default {
     virtual double verify_lock_time() { return timeout()/2.0f; }
 
     template<class T>
-    void timeout_failed () {
+    void timeout_failed (T*) {
         /*
         When a timeout occurs on a lock, this makes an attempt to detect
         deadlocks. The thread with the timeout is blocked long enough (same
@@ -44,19 +44,22 @@ struct shared_state_traits_backtrace: shared_state_traits_default {
                               << Backtrace::make ());
     }
 
-    void was_locked() {
+    template<class T>
+    void locked(T*) {
         start = std::chrono::high_resolution_clock::now ();
     }
 
-    void was_unlocked() {
+    template<class T>
+    void unlocked(T* t) noexcept {
         std::chrono::duration<double> diff = std::chrono::high_resolution_clock::now () - start;
-        if (diff.count() > verify_lock_time())
-            exceeded_lock_time (diff.count());
+        double D = diff.count ();
+        double V = verify_lock_time ();
+        if (D > V && exceeded_lock_time)
+            exceeded_lock_time (D, V, (void*)t, typeid(*t));
     }
 
-    std::function<void(double)> exceeded_lock_time = [](double T) {
-        std::cout << "Warning: Lock was held for " << T << "seconds. In " << Backtrace::make_string () << std::endl;
-    };
+    static std::function<void(double, double, void*, const std::type_info&)> default_warning;
+    std::function<void(double, double, void*, const std::type_info&)> exceeded_lock_time = default_warning;
 
     static void test();
 

@@ -96,10 +96,13 @@ public:
     struct shared_state_traits: shared_state_traits_default {
         base* b;
 
-        void was_locked () {
+        template<class T>
+        void locked (T*) {
             EXCEPTION_ASSERT_EQUALS(++b->step, 1);
         }
-        void was_unlocked () {
+
+        template<class T>
+        void unlocked (T*) {
             ++b->step;
         }
     };
@@ -358,7 +361,6 @@ void test ()
 
     condition_variable_any cond;
     future<void> f = async(launch::async, [&](){
-        // Make sure readTwice starts before this function
         auto w = mya.write ();
         w->method (1);
         // wait unlocks w before waiting
@@ -369,9 +371,11 @@ void test ()
 
     while (future_status::timeout == f.wait_for(std::chrono::milliseconds(1)))
     {
-        mya.write ()->method (3);
+        mya->method (3);
         cond.notify_one ();
     }
+
+    EXCEPTION_ASSERT_EQUALS(mya->const_method(), 2);
 
     auto rlock = mya.read ();
     auto rlock2 = std::move(rlock); // Move lock

@@ -132,26 +132,25 @@ struct shared_state_traits_default {
     double timeout () { return 0.100; }
 
     /**
-     If 'timeout_failed' does not frow the attempted read_ptr or write_ptr will
+     If 'timeout_failed' does not throw the attempted read_ptr or write_ptr will
      become a null-pointer.
      */
-    template<class C>
-    void timeout_failed () {
-        throw typename shared_state<C>::lock_failed {};
+    template<class T>
+    void timeout_failed (T*) {
+        throw typename shared_state<T>::lock_failed {};
     }
 
     /**
-     was_locked and was_unlocked are called each time the mutex for this is
+     'locked' and 'unlocked' are called each time the mutex for this is
      instance is locked and unlocked, respectively. Regardless if the lock
-     is a read-only lock or a read-and-write lock.
+     is a read-only lock or a read-and-write lock. The lock is still active
+     when these functions are called.
      */
-    void was_locked () {}
+    template<class T>
+    void locked (T*) {}
 
-    /**
-     * was_unlocked is called in the destructor of the lock wrappers
-     * read_ptr/write_ptr, throwing from here will thus crash the program.
-     */
-    void was_unlocked () {}
+    template<class T>
+    void unlocked (T*) {}
 
     /**
      * @brief shared_state_mutex defines which mutex shared_state will use to
@@ -275,8 +274,7 @@ public:
         read_ptr(const read_ptr&) = delete;
         read_ptr& operator=(read_ptr const&) = delete;
 
-        ~read_ptr() {
-            // The destructor isn't called if the constructor throws.
+        ~read_ptr() throw(...) {
             unlock ();
         }
 
@@ -311,23 +309,36 @@ public:
             }
             else
             {
-                d->template timeout_failed<T> ();
+                d->template timeout_failed<T> (d->p);
                 // timeout_failed is expected to throw. But if it doesn't,
                 // make this behave as a null pointer
-                p = 0;
-                return; // don't call was_locked
+                return;
             }
 
             p = d->p;
-            d->was_locked();
+
+            try {
+                d->locked (p);
+            } catch (...) {
+                p = 0;
+                l->unlock_shared ();
+                throw;
+            }
         }
 
         void unlock() {
             if (p)
             {
+                try {
+                    d->unlocked (p);
+                } catch (...) {
+                    p = 0;
+                    l->unlock_shared ();
+                    throw;
+                }
+
                 p = 0;
                 l->unlock_shared ();
-                d->was_unlocked();
             }
         }
 
@@ -353,11 +364,9 @@ public:
                 d (vp.d),
                 p (0)
         {
-            if (!l->try_lock_shared ())
-                p = 0;
-            else {
+            if (l->try_lock_shared ()) {
                 p = d->p;
-                d->was_locked();
+                d->locked (p);
             }
         }
 
@@ -388,7 +397,7 @@ public:
         write_ptr(const write_ptr&) = delete;
         write_ptr& operator=(write_ptr const&) = delete;
 
-        ~write_ptr() {
+        ~write_ptr() throw(...) {
             unlock ();
         }
 
@@ -418,21 +427,34 @@ public:
             }
             else
             {
-                d->template timeout_failed<T> ();
-                p = 0;
+                d->timeout_failed(d->p);
                 return;
             }
 
             p = d->p;
-            d->was_locked();
+
+            try {
+                d->locked (p);
+            } catch (...) {
+                p = 0;
+                l->unlock ();
+                throw;
+            }
         }
 
         void unlock() {
             if (p)
             {
+                try {
+                    d->unlocked (p);
+                } catch (...) {
+                    p = 0;
+                    l->unlock ();
+                    throw;
+                }
+
                 p = 0;
                 l->unlock ();
-                d->was_unlocked();
             }
         }
 
@@ -460,11 +482,9 @@ public:
                 d (vp.d),
                 p (0)
         {
-            if (!l->try_lock ())
-                p = 0;
-            else {
+            if (l->try_lock ()) {
                 p = d->p;
-                d->was_locked();
+                d->locked (p);
             }
         }
 

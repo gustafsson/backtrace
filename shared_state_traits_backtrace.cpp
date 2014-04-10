@@ -2,10 +2,18 @@
 #include "barrier.h"
 #include "exceptionassert.h"
 #include "trace_perf.h"
+#include "demangle.h"
 
 #include <future>
 
 using namespace std;
+
+std::function<void(double, double, void*, const std::type_info&)> shared_state_traits_backtrace::default_warning =
+        [](double T, double V, void*, const std::type_info& i)
+        {
+            std::cout << "Warning: Lock of " << demangle(i) << " was held for " << T << " > " << V << " s. In " << Backtrace::make_string () << std::endl;
+        };
+
 
 namespace shared_state_traits_backtrace_test {
 
@@ -66,18 +74,17 @@ void shared_state_traits_backtrace::
     {
         shared_state<A> a{new A};
 
-        bool did_report = false;
-
-        a.traits ()->exceeded_lock_time = [&did_report](float){ did_report = true; };
+        std::string report_type;
+        a.traits ()->exceeded_lock_time = [&report_type](float,float,void*t,const std::type_info& i){ report_type = demangle (i);};
 
         auto w = a.write ();
 
         // Wait to make VerifyExecutionTime detect that the lock was kept too long
         this_thread::sleep_for (chrono::milliseconds{10});
 
-        EXCEPTION_ASSERT(!did_report);
+        EXCEPTION_ASSERT(report_type.empty ());
         w.unlock ();
-        EXCEPTION_ASSERT(did_report);
+        EXCEPTION_ASSERT_EQUALS(report_type, "shared_state_traits_backtrace_test::A");
 
         {
             int N = 10000;
