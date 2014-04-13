@@ -37,8 +37,16 @@
 
     typedef boost::shared_mutex shared_state_mutex_default;
 #else
+    //#include <mutex>
     //#include <shared_mutex>  // Requires C++14
+    //namespace std {
+    //    typedef shared_mutex shared_timed_mutex;
+    //}
+
     #include "shared_timed_mutex_polyfill.h" // Requires C++11
+    namespace std {
+        using namespace std_polyfill;
+    }
 
     namespace shared_state_chrono = std::chrono;
 
@@ -52,12 +60,7 @@
         bool try_lock_shared_for(...) { lock_shared(); return true; }
     };
 
-    //class shared_state_mutex: public std::shared_timed_mutex {
-    //public:
-    //    bool try_lock_for(...) { lock(); return true; }
-    //    bool try_lock_shared_for(...) { lock_shared(); return true; }
-    //};
-    class shared_state_mutex_notimeout: public std_polyfill::shared_timed_mutex {
+    class shared_state_mutex_notimeout: public std::shared_timed_mutex {
     public:
         bool try_lock_for(...) { lock(); return true; }
         bool try_lock_shared_for(...) { lock_shared(); return true; }
@@ -73,7 +76,7 @@
         bool try_lock_shared_for(const shared_state_chrono::duration<Rep, Period>& rel_time) { return try_lock_for(rel_time); }
     };
 
-    typedef std_polyfill::shared_timed_mutex shared_state_mutex_default;
+    typedef std::shared_timed_mutex shared_state_mutex_default;
 #endif
 
 

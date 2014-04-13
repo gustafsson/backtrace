@@ -75,7 +75,7 @@ void shared_state_traits_backtrace::
         shared_state<A> a{new A};
 
         std::string report_type;
-        a.traits ()->exceeded_lock_time = [&report_type](float,float,void*t,const std::type_info& i){ report_type = demangle (i);};
+        a.traits ()->exceeded_lock_time = [&report_type](float,float,void*,const std::type_info& i){ report_type = demangle (i); };
 
         auto w = a.write ();
 

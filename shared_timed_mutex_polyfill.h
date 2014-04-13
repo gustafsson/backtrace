@@ -42,9 +42,6 @@
 
 namespace std_polyfill
 {
-    namespace chrono = std::chrono;
-    typedef std::cv_status cv_status;
-
     class shared_timed_mutex
     {
     private:
@@ -252,12 +249,12 @@ namespace std_polyfill
 //#endif
 //#ifdef BOOST_THREAD_USES_CHRONO
         template <class Rep, class Period>
-        bool try_lock_shared_for(const chrono::duration<Rep, Period>& rel_time)
+        bool try_lock_shared_for(const std::chrono::duration<Rep, Period>& rel_time)
         {
-          return try_lock_shared_until(chrono::steady_clock::now() + rel_time);
+          return try_lock_shared_until(std::chrono::steady_clock::now() + rel_time);
         }
         template <class Clock, class Duration>
-        bool try_lock_shared_until(const chrono::time_point<Clock, Duration>& abs_time)
+        bool try_lock_shared_until(const std::chrono::time_point<Clock, Duration>& abs_time)
         {
 //#if defined BOOST_THREAD_PROVIDES_INTERRUPTIONS
 //          std::this_thread::disable_interruption do_not_disturb;
@@ -267,7 +264,7 @@ namespace std_polyfill
           while(!state.can_lock_shared())
           //while(state.exclusive || state.exclusive_waiting_blocked)
           {
-              if(cv_status::timeout==shared_cond.wait_until(lk,abs_time))
+              if(std::cv_status::timeout==shared_cond.wait_until(lk,abs_time))
               {
                   return false;
               }
@@ -350,12 +347,12 @@ namespace std_polyfill
 //#endif
 //#ifdef BOOST_THREAD_USES_CHRONO
         template <class Rep, class Period>
-        bool try_lock_for(const chrono::duration<Rep, Period>& rel_time)
+        bool try_lock_for(const std::chrono::duration<Rep, Period>& rel_time)
         {
-          return try_lock_until(chrono::steady_clock::now() + rel_time);
+          return try_lock_until(std::chrono::steady_clock::now() + rel_time);
         }
         template <class Clock, class Duration>
-        bool try_lock_until(const chrono::time_point<Clock, Duration>& abs_time)
+        bool try_lock_until(const std::chrono::time_point<Clock, Duration>& abs_time)
         {
 //#if defined BOOST_THREAD_PROVIDES_INTERRUPTIONS
 //          std::this_thread::disable_interruption do_not_disturb;
@@ -365,7 +362,7 @@ namespace std_polyfill
           while(state.shared_count || state.exclusive)
           {
               state.exclusive_waiting_blocked=true;
-              if(cv_status::timeout == exclusive_cond.wait_until(lk,abs_time))
+              if(std::cv_status::timeout == exclusive_cond.wait_until(lk,abs_time))
               {
                   if(state.shared_count || state.exclusive)
                   {
@@ -452,12 +449,12 @@ namespace std_polyfill
 //#endif
 //#ifdef BOOST_THREAD_USES_CHRONO
         template <class Rep, class Period>
-        bool try_lock_upgrade_for(const chrono::duration<Rep, Period>& rel_time)
+        bool try_lock_upgrade_for(const std::chrono::duration<Rep, Period>& rel_time)
         {
-          return try_lock_upgrade_until(chrono::steady_clock::now() + rel_time);
+          return try_lock_upgrade_until(std::chrono::steady_clock::now() + rel_time);
         }
         template <class Clock, class Duration>
-        bool try_lock_upgrade_until(const chrono::time_point<Clock, Duration>& abs_time)
+        bool try_lock_upgrade_until(const std::chrono::time_point<Clock, Duration>& abs_time)
         {
 //#if defined BOOST_THREAD_PROVIDES_INTERRUPTIONS
 //          std::this_thread::disable_interruption do_not_disturb;
@@ -465,7 +462,7 @@ namespace std_polyfill
           std::unique_lock<std::mutex> lk(state_change);
           while(state.exclusive || state.exclusive_waiting_blocked || state.upgrade)
           {
-              if(cv_status::timeout == shared_cond.wait_until(lk,abs_time))
+              if(std::cv_status::timeout == shared_cond.wait_until(lk,abs_time))
               {
                   if(state.exclusive || state.exclusive_waiting_blocked || state.upgrade)
                   {
@@ -560,15 +557,15 @@ namespace std_polyfill
         template <class Rep, class Period>
         bool
         try_unlock_upgrade_and_lock_for(
-                                const chrono::duration<Rep, Period>& rel_time)
+                                const std::chrono::duration<Rep, Period>& rel_time)
         {
           return try_unlock_upgrade_and_lock_until(
-                                 chrono::steady_clock::now() + rel_time);
+                                 std::chrono::steady_clock::now() + rel_time);
         }
         template <class Clock, class Duration>
         bool
         try_unlock_upgrade_and_lock_until(
-                          const chrono::time_point<Clock, Duration>& abs_time)
+                          const std::chrono::time_point<Clock, Duration>& abs_time)
         {
 //#if defined BOOST_THREAD_PROVIDES_INTERRUPTIONS
 //          std::this_thread::disable_interruption do_not_disturb;
@@ -579,10 +576,10 @@ namespace std_polyfill
           {
               for (;;)
               {
-                cv_status status = shared_cond.wait_until(lk,abs_time);
+                std::cv_status status = shared_cond.wait_until(lk,abs_time);
                 if (state.shared_count == 1)
                   break;
-                if(status == cv_status::timeout)
+                if(status == std::cv_status::timeout)
                   return false;
               }
           }
