@@ -520,9 +520,9 @@ public:
     write_ptr try_write() const { return write_ptr(*this, bool()); }
 
     /**
-     * @brief readWriteLock returns the mutex object for this instance.
+     * @brief mutex returns the mutex object for this instance.
      */
-    typename details::shared_state_mutex& readWriteLock() const { return d->lock; }
+    typename details::shared_state_mutex& mutex() const { return d->lock; }
 
     /**
      * @brief raw gives direct access to the unprotected state. The client is
