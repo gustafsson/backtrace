@@ -141,10 +141,9 @@ struct shared_state_traits_default {
     }
 
     /**
-     'locked' and 'unlocked' are called each time the mutex for this is
-     instance is locked and unlocked, respectively. Regardless if the lock
-     is a read-only lock or a read-and-write lock. The lock is still active
-     when these functions are called.
+     'locked' and 'unlocked' are called right after the mutex for this is
+     instance is locked or unlocked, respectively. Regardless if the lock
+     is a read-only lock or a read-and-write lock.
      */
     template<class T>
     void locked (T*) {}
@@ -329,16 +328,10 @@ public:
         void unlock() {
             if (p)
             {
-                try {
-                    d->unlocked (p);
-                } catch (...) {
-                    p = 0;
-                    l->unlock_shared ();
-                    throw;
-                }
-
+                const T* q = p;
                 p = 0;
                 l->unlock_shared ();
+                d->unlocked (q);
             }
         }
 
@@ -445,16 +438,10 @@ public:
         void unlock() {
             if (p)
             {
-                try {
-                    d->unlocked (p);
-                } catch (...) {
-                    p = 0;
-                    l->unlock ();
-                    throw;
-                }
-
+                T* q = p;
                 p = 0;
                 l->unlock ();
+                d->unlocked (q);
             }
         }
 
@@ -554,6 +541,10 @@ public:
 #endif
 
     bool unique() const { return d.unique (); }
+
+    void swap(shared_state& b) {
+        std::swap(d, b.d);
+    }
 
 private:
     template<typename Y>
