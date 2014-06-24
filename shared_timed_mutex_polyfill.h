@@ -95,10 +95,10 @@ namespace std_polyfill
                 return ! (shared_count || exclusive);
             }
 
-            void exclusive_blocked (bool blocked)
-            {
-                exclusive_waiting_blocked = blocked;
-            }
+//            void exclusive_blocked (bool blocked)
+//            {
+//                exclusive_waiting_blocked = blocked;
+//            }
 
             void lock ()
             {
