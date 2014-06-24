@@ -43,6 +43,7 @@ LFLAGS        = $(BACKTRACE_LFLAGS)
 
 
 TARGET        = ./backtrace-unittest
+# $ ls *.cpp | sort -f | sed 's/.cpp$/.o \\/g' | pbcopy
 OBJECTS       = \
 		backtrace.o \
 		barrier.o \
