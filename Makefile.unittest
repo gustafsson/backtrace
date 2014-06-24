@@ -49,7 +49,7 @@ OBJECTS       = \
 		demangle.o \
 		detectgdb.o \
 		exceptionassert.o \
-		main.o \
+		main/main.o \
 		prettifysegfault.o \
 		prettifysegfaultnoinline.o \
 		signalname.o \
@@ -69,7 +69,7 @@ clean:
 .depend: *.cpp *.h
 	mkdep $(CXXFLAGS) *.cpp
 
-$(TARGET): Makefile $(OBJECTS) .depend
+$(TARGET): Makefile.unittest $(OBJECTS) .depend
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(LIBS)
 	$(TARGET) || true
 

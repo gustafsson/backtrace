@@ -1,5 +1,5 @@
-#include "unittest.h"
-#include "prettifysegfault.h"
+#include "../unittest.h"
+#include "../prettifysegfault.h"
 
 int main(int argc, char** argv)
 {
