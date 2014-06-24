@@ -3,6 +3,7 @@
 #include "exceptionassert.h"
 #include "trace_perf.h"
 #include "demangle.h"
+#include "tasktimer.h"
 
 #include <future>
 
@@ -11,7 +12,13 @@ using namespace std;
 std::function<void(double, double, void*, const std::type_info&)> shared_state_traits_backtrace::default_warning =
         [](double T, double V, void*, const std::type_info& i)
         {
-            std::cout << "Warning: Lock of " << demangle(i) << " was held for " << T << " > " << V << " s. In " << Backtrace::make_string () << std::endl;
+            auto bt = Backtrace::make ();
+            std::string tn = demangle(i);
+
+            std::async(std::launch::async, [T, V, tn, bt]{
+                TaskInfo(boost::format("!!! Warning: Lock of %s was held for %s > %s. %s") %
+                         tn % TaskTimer::timeToString (T) % TaskTimer::timeToString (V) % bt.value ().to_string ());
+            });
         };
 
 
