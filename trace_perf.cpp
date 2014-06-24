@@ -118,18 +118,12 @@ void performance_traces::
         compare_to_db(db, entries, sourcefilename);
     }
 
-    bool missing_test_printed = false;
     for (auto i = dbs.begin (); i!=dbs.end (); i++)
     {
         map<string, double>& db = i->second;
 
-        if (!db.empty () && !missing_test_printed) {
-            cerr << endl << "Missing tests ..." << endl;
-            missing_test_printed = true;
-        }
-
-        for (auto i = db.begin (); i!=db.end (); i++)
-            cerr << '\'' << i->first  << '\'' << endl;
+        for (auto j = db.begin (); j!=db.end (); j++)
+            cerr << i->first << ": Missing trace_perf test \'" << j->first  << "\'" << endl;
     }
 }
 
