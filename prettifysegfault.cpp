@@ -6,6 +6,7 @@
 #include "exceptionassert.h"
 
 #include <signal.h>
+#include <iostream>
 
 #ifdef _MSC_VER
 #include <Windows.h>
@@ -38,7 +39,7 @@ void seghandle_userspace() {
         printSignalInfo(last_caught_signal, false);
 }
 
-
+#ifndef DARWIN_NO_CARBON // not ios
 void seghandle(int sig, __siginfo*, void* unused)
 {    
   nested_signal_handling = is_doing_signal_handling;
@@ -84,7 +85,6 @@ void seghandle(int sig, __siginfo*, void* unused)
   is_doing_signal_handling = false;
 }
 
-
 void setup_signal_survivor(int sig)
 {
   struct sigaction sa;
@@ -94,6 +94,7 @@ void setup_signal_survivor(int sig)
   bool sigsegv_handler = sigaction(sig, &sa, NULL) != -1;
   EXCEPTION_ASSERTX(sigsegv_handler, "failed to setup SIGSEGV handler");
 }
+#endif
 #endif
 
 void handler(int sig)
@@ -142,7 +143,7 @@ void printSignalInfo(int sig, bool noaction)
         return;
 
     case SIGWINCH:
-        TaskInfo("Got SIGWINCH, could reload OpenGL resources here");
+        TaskInfo("Got SIGWINCH");
         fflush(stdout);
         return;
 #endif
@@ -335,11 +336,13 @@ void PrettifySegfault::
         setup ()
 {
 #ifndef _MSC_VER
+    #ifndef DARWIN_NO_CARBON // not ios
     // subscribe to everything SIGSEGV and friends
     for (int i=1; i<=SIGUSR2; ++i)
     {
         switch(i)
         {
+        case SIGWINCH:
         case SIGCHLD:
             break;
         case SIGILL:
@@ -352,6 +355,7 @@ void PrettifySegfault::
             break;
         }
     }
+    #endif
 #else
     SetUnhandledExceptionFilter(MyUnhandledExceptionFilter);
 #endif
@@ -457,8 +461,8 @@ void PrettifySegfault::
         test()
 {
     // Skip test if running through gdb
-    if (DetectGdb::was_started_through_gdb ()) {
-        TaskInfo("Running as child process, skipping PrettifySegfault test");
+    if (DetectGdb::is_running_through_gdb() || DetectGdb::was_started_through_gdb ()) {
+        TaskInfo("Running through debugger, skipping PrettifySegfault test");
         return;
     }
 

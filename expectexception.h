@@ -10,8 +10,10 @@
 
 class expected_exception: virtual public boost::exception, virtual public std::exception {};
 class unexpected_exception: virtual public boost::exception, virtual public std::exception {};
+struct unexpected_exception_tag {};
 typedef boost::error_info<struct unexpected_exception_tag,boost::exception_ptr> unexpected_exception_info;
 
+struct tag_expected_exception_type {};
 typedef boost::error_info<struct tag_expected_exception_type,std::type_info const *> expected_exception_type;
 
 inline

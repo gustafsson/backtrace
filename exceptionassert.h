@@ -6,6 +6,8 @@
 #include <boost/format.hpp>
 #include <boost/exception/all.hpp>
 
+// inline type declaration in template argument to error_info without type definition doesn't work on ios
+struct errinfo_format_tag {};
 typedef boost::error_info<struct errinfo_format_tag, boost::format> errinfo_format;
 
 
@@ -24,6 +26,7 @@ typedef boost::error_info<struct errinfo_format_tag, boost::format> errinfo_form
 class ExceptionAssert: virtual public boost::exception, virtual public std::exception
 {
 public:
+    struct message {};
     typedef boost::error_info<struct condition,char const *> ExceptionAssert_condition;
     typedef boost::error_info<struct message,std::string> ExceptionAssert_message;
 
