@@ -8,7 +8,11 @@
  * @brief The trace_perf class should log the execution time of a scope and
  * warn if it was below a threshold.
  *
- * The scope is identified by a text string.
+ * The scope is identified by a text string, example:
+ *    {
+ *      TRACE_PERF("running thingy");
+ *      run_thingy();
+ *    }
  *
  * The threshold is defined for each scope in a database file in the folder
  * trace_perf/...
