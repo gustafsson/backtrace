@@ -80,6 +80,25 @@
 #endif
 
 
+/**
+ * @brief The shared_state_nomutex class is a dummy class than can be used with
+ * shared_state_traits to disable mutex locking for a given type. This is meant
+ * to be used temporarily during testing.
+ */
+class shared_state_nomutex {
+public:
+    void lock() {}
+    void unlock() {}
+    void lock_shared() { lock(); }
+    bool try_lock() { return true; }
+    bool try_lock_shared() { return true; }
+    void unlock_shared() { unlock(); }
+
+    bool try_lock_for(...) { lock(); return true; }
+    bool try_lock_shared_for(...) { lock_shared(); return true; }
+};
+
+
 #if defined SHARED_STATE_NO_TIMEOUT
     #if defined SHARED_STATE_NO_SHARED_MUTEX
         typedef shared_state_mutex_notimeout_noshared shared_state_mutex;
