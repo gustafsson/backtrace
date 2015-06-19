@@ -160,6 +160,12 @@ struct shared_state_traits_default {
      * See shared_state_mutex.h for possible implementations.
      */
     typedef ::shared_state_mutex shared_state_mutex;
+
+    /**
+     * @brief enable_implicit_lock defines if the -> operator is enough to
+     * obtain a lock. Otherwise, explicit .write() and .read() are needed.
+     */
+    struct enable_implicit_lock : std::true_type {};
 };
 
 template<class C>
@@ -167,12 +173,18 @@ struct shared_state_traits: public shared_state_traits_default {};
 
 template<class T>
 struct shared_state_details_helper {
+    // The first template function "test" is used to detect if
+    // "typename C::shared_state_traits" exists.
+    // SFINAE skips this declaration if the subtype does not exist and instead
+    // lets the second template declare "test".
     template<typename C>
     static typename C::shared_state_traits test(typename C::shared_state_traits*);
 
     template<typename C> // worst match
     static shared_state_traits<C> test(...);
 
+    // shared_state_details_helper::type represents the return type of the
+    // template function "test"
     typedef decltype(test<T>(0)) type;
 };
 
@@ -524,7 +536,7 @@ public:
      * The shared_state is not released as long as the shared_ptr return from
      * traits is alive.
      */
-    std::shared_ptr<typename shared_state_details_helper<T>::type> traits() const { return d; }
+    std::shared_ptr<typename shared_state_details_helper<typename std::remove_const<T>::type>::type> traits() const { return d; }
 
     explicit operator bool() const { return (bool)d; }
     bool operator== (const shared_state& b) const { return d == b.d; }
@@ -536,8 +548,12 @@ public:
     static read_ptr lock_type_test(element_type const*);
     typedef decltype(lock_type_test((T*)0)) lock_type;
 
-    lock_type operator-> () const { return lock_type(*this); }
-    lock_type get () const { return lock_type(*this); }
+    lock_type operator-> () const {
+        typedef typename std::enable_if <details::enable_implicit_lock::value>::type method_is_disabled_for_this_type;
+        return lock_type(*this); }
+    lock_type get () const {
+        typedef typename std::enable_if <details::enable_implicit_lock::value>::type method_is_disabled_for_this_type;
+        return lock_type(*this); }
 #endif
 
     bool unique() const { return d.unique (); }
