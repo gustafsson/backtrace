@@ -26,52 +26,39 @@ DEBUG_RELEASE = -O3
 #SHARED_STATE  = -DSHARED_STATE_NO_SHARED_MUTEX
 #SHARED_STATE  = -DSHARED_STATE_NO_TIMEOUT
 #SHARED_STATE  = -DSHARED_STATE_NO_SHARED_MUTEX -DSHARED_STATE_NO_TIMEOUT
+
+# Boost mutexes
 #
 # std (libc++) is 20% faster than boost with concurrent reads enabled.
-# boost (pthreads) is 1% faster than std without concurrent reads.
+# boost (pthreads) is 1% faster than std with concurrent reads disabled.
 #
-#LIBS          = -L/opt/local/lib -lboost_system-mt -lboost_chrono-mt -lboost_thread-mt
-#SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX
-#SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX -DSHARED_STATE_NO_SHARED_MUTEX
-#SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX -DSHARED_STATE_NO_TIMEOUT
-#SHARED_STATE  = -DSHARED_STATE_BOOST_MUTEX -DSHARED_STATE_NO_SHARED_MUTEX -DSHARED_STATE_NO_TIMEOUT
+#LIBS         += -lboost_system-mt -lboost_chrono-mt -lboost_thread-mt
+#SHARED_STATE += -DSHARED_STATE_BOOST_MUTEX
 
-
-INCPATH       = -I/opt/local/include
-CXXFLAGS      = -std=c++11 -W -Wall -g $(BACKTRACE_CXXFLAGS) $(DEBUG_RELEASE) $(SHARED_STATE) $(INCPATH)
-LFLAGS        = $(BACKTRACE_LFLAGS)
+# MacPorts
+#
+#INCPATH      += -I/opt/local/include 
+#LIBS         += -L/opt/local/lib
 
 
 TARGET        = ./backtrace-unittest
-# $ ls *.cpp | sort -f | sed 's/.cpp$/.o \\/g' | pbcopy
-OBJECTS       = \
-		backtrace.o \
-		barrier.o \
-		demangle.o \
-		detectgdb.o \
-		exceptionassert.o \
-		main/main.o \
-		prettifysegfault.o \
-		prettifysegfaultnoinline.o \
-		signalname.o \
-		tasktimer.o \
-		timer.o \
-		trace_perf.o \
-		unittest.o \
-		verifyexecutiontime.o \
-		shared_state.o \
-		shared_state_traits_backtrace.o \
+CXXFLAGS      = -std=c++11 -W -Wall -g $(BACKTRACE_CXXFLAGS) $(DEBUG_RELEASE) $(SHARED_STATE) $(INCPATH)
+LFLAGS        = $(BACKTRACE_LFLAGS)
+SRCS          = $(wildcard *.cpp)
+OBJS          = $(SRCS:%.cpp=%.o) main/main.o
 
 all: $(TARGET)
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -f $(OBJS) $(TARGET)
 
 .depend: *.cpp *.h
 	mkdep $(CXXFLAGS) *.cpp
 
-$(TARGET): Makefile.unittest $(OBJECTS) .depend
-	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(LIBS)
+$(OBJS): Makefile.unittest
+
+$(TARGET): $(OBJS) .depend
+	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJS) $(LIBS)
 	$(TARGET) || true
 
 include .depend
