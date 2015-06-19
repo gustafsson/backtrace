@@ -8,6 +8,8 @@ win32:CONFIG += debug_and_release
 
 CONFIG += staticlib warn_on
 CONFIG += c++11 buildflags
+CONFIG += tmpdir
+CONFIG += precompile_header_with_all_headers
 
 QT += opengl
 
@@ -18,11 +20,6 @@ win32: INCLUDEPATH += ../sonicawe-winlib
 
 macx:exists(/opt/local/include/): INCLUDEPATH += /opt/local/include/ # macports
 macx:exists(/usr/local/include/): INCLUDEPATH += /usr/local/include/ # homebrew
-
-OBJECTS_DIR = tmp/
-CONFIG(debug, debug|release):OBJECTS_DIR = $${OBJECTS_DIR}debug/
-else:OBJECTS_DIR = $${OBJECTS_DIR}release/
-
 
 OTHER_FILES += \
     LICENSE \
