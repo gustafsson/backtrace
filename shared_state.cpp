@@ -15,7 +15,7 @@
 #include <thread>
 #include <future>
 #include <condition_variable>
-
+#include <iostream>
 
 using namespace std;
 
@@ -299,7 +299,6 @@ void test ()
         mymap.find (A::ptr{});
     }
 
-
     // shared_state should cause an overhead of less than 0.3 microseconds in a
     // 'release' build.
     {
@@ -319,7 +318,6 @@ void test ()
         for (int i=0; i<N; i++)
             a2.read ()->noinlinecall ();
     }
-
 
     // shared_state should cause an overhead of less than 0.1 microseconds in a
     // 'release' build when using 'no_lock_failed'.
@@ -444,23 +442,30 @@ void WriteWhileReadingThread::
 #ifndef SHARED_STATE_NO_TIMEOUT
         // can't lock for read twice if another thread request a write in the middle
         // that write request will fail and then this will succeed
+
+        // (this situation requires that lock-waits occur in a very specific order,
+        //  the barrier here together with the sleep in the main thread makes this
+        //  likely enough that it can be tested)
         spinning_barrier barrier(2);
-        future<void> f = async(launch::async, [&b,&barrier](){
+        future<void> f = async(launch::async, [&](){
             // Make sure readTwice starts before this function
             barrier.wait ();
-            this_thread::sleep_for (chrono::milliseconds{3});
-
             // Write access should fail as the first thread attempts recursive locks
             // through multiple calls to read ().
             EXPECT_EXCEPTION(lock_failed, b.write (); );
         });
 
         {
+            auto r1 = b.read ();
             barrier.wait ();
+
+            // make the 'f' thread start waiting for a lock before this thread.
+            this_thread::sleep_for (chrono::milliseconds{3});
+
 #ifndef SHARED_STATE_NO_SHARED_MUTEX
-            readTwice(b);
+            auto r2 = b.read ();
 #else
-            EXPECT_EXCEPTION(lock_failed, readTwice(b) );
+            EXPECT_EXCEPTION(lock_failed, b.read () );
 #endif
         }
 
@@ -483,7 +488,17 @@ void WriteWhileReadingThread::
         for (unsigned k=0; k<W.size (); k++)
         {
             int w = W[k];
+#ifdef SHARED_STATE_NO_SHARED_MUTEX
+            {
+                TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently N=%d, M=%d, w=%d") % N % M % w).str());
+            }
+            TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=%d, M=%d, w=%d") % N % M % w).str());
+#else
+            {
+                TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=%d, M=%d, w=%d") % N % M % w).str());
+            }
             TRACE_PERF ((boost::format("shared_state should handle lock contention efficiently N=%d, M=%d, w=%d") % N % M % w).str());
+#endif
 
             vector<future<void>> workers(8);
 

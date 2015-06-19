@@ -51,3 +51,27 @@ shared_state should handle lock contention efficiently reference N=200, M=1000
 
 shared_state should handle lock contention efficiently simple N=200, M=1000
 0.03
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=100, w=1
+0.06
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=100, w=10
+0.06
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=100, w=100
+0.06
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=100, w=1000
+0.06
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=1000, w=1
+0.02
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=1000, w=10
+0.02
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=1000, w=100
+0.02
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=1000, w=1000
+0.02

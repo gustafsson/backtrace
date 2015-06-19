@@ -3,3 +3,12 @@ shared_state should cause a low overhead : reference
 --- unit 0.1 ms
 shared_state should handle lock contention efficiently N=200, M=1000, w=10
 0.04
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=1000, w=1
+0.03
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=1000, w=10
+0.03
+
+shared_state should handle lock contention efficiently NO_SHARED_MUTEX N=200, M=1000, w=100
+0.03
