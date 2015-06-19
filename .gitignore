@@ -11,3 +11,4 @@ trace_perf/dump
 trace_perf/summary*/*
 Makefile
 *.a
+libbacktrace.h
