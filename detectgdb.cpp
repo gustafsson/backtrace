@@ -120,7 +120,11 @@ bool DetectGdb::
 {
 #if defined(__APPLE_CPP__) && (TARGET_OS_IPHONE==0)
     // No implementation for detecting IOS debugger
-    return false;
+    #ifdef _DEBUG
+        return false;
+    #else
+        return true;
+    #endif
 #else
     bool is_attached_in_qt_creator = is_running_through_gdb_xorl();
     bool is_attached_by_system_debugger = is_running_through_gdb_terminus();
