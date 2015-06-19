@@ -15,7 +15,7 @@ template<typename T>
 std::string vartype(T const& t) { 
     // suppress warning: unreferenced formal parameter
     // even though 't' is used by typeid below
-    &t?void():void();
+    //&t?void():void();
 
     // Note that typeid(t) might differ from typeid(T) as T is deduced
     // in compile time and t in runtime with RTTI.
