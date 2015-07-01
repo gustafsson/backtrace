@@ -1,6 +1,6 @@
 Backtraces rationale
 ====================
-_The Backtrace class should store a backtrace of the call stack in 1 ms on os x. Windows and linux was supported but are not currently maintained._
+_The Backtrace class should store a backtrace of the call stack in 1 ms on OS X. Windows and linux was supported but are not currently maintained._
 
 To make bugs go squish you want some sort of indication as to where it is. This is a bunch of small classes that makes use of runtime backtraces in C++ to decorate exceptions and segfaults with info about their origin. Each class header comment defines its expected behaviour.
 
@@ -126,7 +126,7 @@ Please refer to the static test() function in each class for more complete examp
 
 ## How to use this in your own code ##
 
-The intention is not to build these snippets as a .lib, just include them in your source. They depend on the boost library.
+The .pro file for QMAKE builds a static library. The project depends on the boost library.
 
 
 ## License ##
